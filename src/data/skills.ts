@@ -1,0 +1,35 @@
+import type { Skill } from "../types";
+
+export const skills: Skill[] = [
+  { id: "charge", name: "突击", type: "active", trigger: "attack", effect: "damage+20%", description: "进攻时概率发动，造成更高杀伤。" },
+  { id: "fire", name: "火攻", type: "active", trigger: "random", effect: "extra fire damage", description: "造成额外伤害，雨天威力下降。" },
+  { id: "inspire", name: "鼓舞", type: "active", trigger: "battle_start", effect: "morale+15", description: "提升己方士气。" },
+  { id: "ambush", name: "伏兵", type: "active", trigger: "battle_start", effect: "opening damage", description: "开战造成额外伤害，雾天增强。" },
+  { id: "duel", name: "单挑", type: "active", trigger: "random", effect: "large damage", description: "概率造成大量杀伤。" },
+  { id: "command", name: "统御", type: "passive", trigger: "battle_start", effect: "power+10%", description: "全军战斗力提高。" },
+  { id: "hold", name: "坚守", type: "passive", trigger: "defend", effect: "defense+20%", description: "防守时更难被击破。" },
+  { id: "farm", name: "屯田", type: "city", trigger: "city_turn", effect: "food+20%", description: "提升粮草产出。" },
+  { id: "finance", name: "理财", type: "city", trigger: "city_turn", effect: "gold+20%", description: "提升金钱产出。" },
+  { id: "recruit", name: "募兵", type: "city", trigger: "city_turn", effect: "recruit+25%", description: "提升征兵效果。" },
+  { id: "breakArmy", name: "破军", type: "active", trigger: "attack", effect: "attack power", description: "猛将破阵，进攻时提高正面突破能力。" },
+  { id: "pressure", name: "威压", type: "passive", trigger: "battle_start", effect: "enemy power down", description: "以名望或暴烈气势压制敌军。" },
+  { id: "swift", name: "神速", type: "active", trigger: "attack", effect: "mobility", description: "机动突击，适合骑兵和精锐战将。" },
+  { id: "roar", name: "咆哮", type: "active", trigger: "battle_start", effect: "morale shock", description: "震慑敌胆，提高己方冲击力。" },
+  { id: "prowess", name: "无双", type: "passive", trigger: "battle_start", effect: "duel power", description: "战神级武勇，大幅提高正面杀伤。" },
+  { id: "strategy", name: "鬼谋", type: "active", trigger: "random", effect: "strategy power", description: "顶级谋略，战斗中提高计策与战机掌控。" },
+  { id: "assist", name: "奇佐", type: "passive", trigger: "battle_start", effect: "support power", description: "为主将提供战役级谋划支援。" },
+  { id: "counter", name: "反制", type: "passive", trigger: "defend", effect: "counter power", description: "后发制人，防守和逆势时更稳。" },
+  { id: "lure", name: "诱敌", type: "active", trigger: "random", effect: "trap power", description: "诱敌深入，配合伏兵或火攻更有效。" },
+  { id: "hegemony", name: "霸业", type: "passive", trigger: "battle_start", effect: "leader power", description: "枭雄君主统合军政资源。" },
+  { id: "benevolence", name: "仁德", type: "city", trigger: "city_turn", effect: "public order", description: "以仁德凝聚民心和人才。" },
+  { id: "jiangdong", name: "江东", type: "passive", trigger: "battle_start", effect: "river power", description: "江东水军与守成经营优势。" },
+  { id: "gentry", name: "门阀", type: "city", trigger: "city_turn", effect: "resource and recruit", description: "门第声望带来兵源和资源号召。" },
+  { id: "tyranny", name: "暴政", type: "city", trigger: "city_turn", effect: "forced recruit", description: "强征威压，短期动员强但民心风险高。" },
+  { id: "pacify", name: "安民", type: "city", trigger: "city_turn", effect: "order and economy", description: "安抚百姓，提升治理和产出稳定性。" },
+  { id: "recruitTalent", name: "招贤", type: "city", trigger: "city_turn", effect: "search boost", description: "提高搜索和招揽人才能力。" },
+  { id: "naval", name: "水战", type: "passive", trigger: "battle_start", effect: "river combat", description: "江河地形战斗力提高。" },
+  { id: "cavalryMaster", name: "骑兵", type: "passive", trigger: "attack", effect: "cavalry combat", description: "骑兵冲击和机动能力提高。" },
+  { id: "guard", name: "护主", type: "passive", trigger: "defend", effect: "protect leader", description: "护卫主君，防守和抗线能力提高。" },
+];
+
+export const skillName = (id: string) => skills.find((skill) => skill.id === id)?.name ?? id;
