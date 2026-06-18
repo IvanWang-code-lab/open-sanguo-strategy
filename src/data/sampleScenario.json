@@ -1,0 +1,126 @@
+{
+"id": "sample-three-kingdoms-prototype",
+"name": "Sample Three Kingdoms Prototype Scenario",
+"version": "0.1.0",
+"description": "A small sample scenario used to prepare the first playable browser prototype for Open Sanguo Strategy.",
+"initialTurn": 1,
+"initialActiveFactionId": "liu-bei",
+"map": {
+"type": "placeholder-grid",
+"width": 5,
+"height": 4
+},
+"factions": [
+{
+"id": "liu-bei",
+"name": "Liu Bei",
+"color": "green",
+"capitalCityId": "xinye",
+"strategy": "defensive-growth"
+},
+{
+"id": "cao-cao",
+"name": "Cao Cao",
+"color": "blue",
+"capitalCityId": "xuchang",
+"strategy": "central-expansion"
+},
+{
+"id": "sun-quan",
+"name": "Sun Quan",
+"color": "red",
+"capitalCityId": "jianye",
+"strategy": "river-defense"
+}
+],
+"cities": [
+{
+"id": "xinye",
+"name": "Xinye",
+"ownerFactionId": "liu-bei",
+"position": {
+"x": 1,
+"y": 2
+},
+"population": 12000,
+"food": 800,
+"gold": 500,
+"defense": 45
+},
+{
+"id": "xuchang",
+"name": "Xuchang",
+"ownerFactionId": "cao-cao",
+"position": {
+"x": 3,
+"y": 1
+},
+"population": 30000,
+"food": 1800,
+"gold": 1600,
+"defense": 80
+},
+{
+"id": "jianye",
+"name": "Jianye",
+"ownerFactionId": "sun-quan",
+"position": {
+"x": 4,
+"y": 3
+},
+"population": 24000,
+"food": 1500,
+"gold": 1200,
+"defense": 70
+}
+],
+"officers": [
+{
+"id": "liu-bei",
+"name": "Liu Bei",
+"factionId": "liu-bei",
+"cityId": "xinye",
+"leadership": 78,
+"politics": 82,
+"war": 72,
+"intelligence": 75
+},
+{
+"id": "zhuge-liang",
+"name": "Zhuge Liang",
+"factionId": "liu-bei",
+"cityId": "xinye",
+"leadership": 92,
+"politics": 98,
+"war": 45,
+"intelligence": 100
+},
+{
+"id": "cao-cao",
+"name": "Cao Cao",
+"factionId": "cao-cao",
+"cityId": "xuchang",
+"leadership": 96,
+"politics": 94,
+"war": 82,
+"intelligence": 91
+},
+{
+"id": "sun-quan",
+"name": "Sun Quan",
+"factionId": "sun-quan",
+"cityId": "jianye",
+"leadership": 84,
+"politics": 88,
+"war": 70,
+"intelligence": 80
+}
+],
+"prototypeGoals": [
+"Load sample factions and cities",
+"Display city ownership",
+"Track current turn",
+"Switch active faction after ending a turn",
+"Keep scenario data separate from UI components"
+]
+}
