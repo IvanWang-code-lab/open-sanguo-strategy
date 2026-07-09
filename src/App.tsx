@@ -3,9 +3,11 @@ import { initialFactions } from "./data/factions";
 import { BattleModal } from "./components/BattleModal";
 import { CityPanel } from "./components/CityPanel";
 import { CommandPanel } from "./components/CommandPanel";
-import { LogPanel } from "./components/LogPanel";
+import { GameBottomLog } from "./components/GameBottomLog";
+import { ImmersiveShell } from "./components/immersive/ImmersiveShell";
 import { LordSelect } from "./components/LordSelect";
 import { MapView } from "./components/MapView";
+import { SettingsModal } from "./components/SettingsModal";
 import { TopBar } from "./components/TopBar";
 import { WarCouncilModal } from "./components/WarCouncilModal";
 import { GAME_VERSION } from "./constants/version";
@@ -17,7 +19,8 @@ import { clearSave, loadGame, saveGame } from "./systems/saveSystem";
 import { createInitialGame } from "./systems/scenarioSystem";
 import { endTurn, getFactionStats } from "./systems/turnSystem";
 import { createAutoTacticalChoices } from "./systems/battleTacticsSystem";
-import type { ArmyFormation, BattleControlMode, BattleReport, BattleTacticalChoice, CityActionType, CommandPreferences, GameState, PendingBattle } from "./types";
+import { applyBattlefieldResult } from "./systems/battleResolutionSystem";
+import type { ArmyFormation, BattleControlMode, BattleReport, BattleTacticalChoice, BattlefieldState, CityActionType, CommandPreferences, GameState, PendingBattle } from "./types";
 
 const LORD_CHOICE_KEY = "three-kingdoms-new-overlord-last-lord";
 
@@ -32,6 +35,7 @@ function App() {
   const [battleReport, setBattleReport] = useState<BattleReport | undefined>();
   const [warCouncil, setWarCouncil] = useState<{ attackerCityId: string; defenderCityId: string } | undefined>();
   const [pendingBattle, setPendingBattle] = useState<PendingBattle | undefined>();
+  const [showSettings, setShowSettings] = useState(false);
 
   const selectedCity = game?.cities.find((city) => city.id === selectedCityId);
 
@@ -41,9 +45,9 @@ function App() {
     saveGame(versionedState);
   };
 
-  const startGame = () => {
+  const startGame = (scenarioId = "190") => {
     if (!initialFactions.some((faction) => faction.id === selectedFactionId)) return;
-    const next = createInitialGame(selectedFactionId);
+    const next = createInitialGame(selectedFactionId, scenarioId);
     persist(next);
     localStorage.setItem(LORD_CHOICE_KEY, selectedFactionId);
     setSelectedCityId(next.cities.find((city) => city.factionId === selectedFactionId)?.id ?? next.cities[0].id);
@@ -116,19 +120,46 @@ function App() {
 
   const handleStartBattle = (formation: ArmyFormation, controlMode: BattleControlMode) => {
     if (!game || !warCouncil) return;
-    const battle: PendingBattle = { ...warCouncil, formation, controlMode };
+    const normalizedMode: BattleControlMode =
+      controlMode === "auto" ? "quick" : controlMode === "standard" || controlMode === "deep" ? "classic" : controlMode;
+    const battle: PendingBattle = { ...warCouncil, formation, controlMode: normalizedMode };
     setWarCouncil(undefined);
-    if (controlMode !== "auto") {
+    if (normalizedMode !== "quick") {
       setPendingBattle(battle);
       return;
     }
-    const choices = createAutoTacticalChoices(game, battle.attackerCityId, battle.defenderCityId, formation, "auto", controlMode);
-    resolvePlannedBattle({ ...game, battleControlMode: controlMode, commandPreferences: { ...game.commandPreferences, battleControlMode: controlMode } }, battle, choices);
+    const autoBattle: PendingBattle = { ...battle, controlMode: "auto" };
+    const choices = createAutoTacticalChoices(game, autoBattle.attackerCityId, autoBattle.defenderCityId, formation, "auto", "auto");
+    resolvePlannedBattle({ ...game, battleControlMode: normalizedMode, commandPreferences: { ...game.commandPreferences, battleControlMode: normalizedMode } }, autoBattle, choices);
   };
 
   const handleResolvePendingBattle = (choices: BattleTacticalChoice[]) => {
     if (!game || !pendingBattle) return;
     resolvePlannedBattle(game, pendingBattle, choices);
+  };
+
+  const handleResolveBattlefield = (battlefield: BattlefieldState) => {
+    if (!game || !pendingBattle) return;
+    const attacker = game.cities.find((city) => city.id === pendingBattle.attackerCityId);
+    const spent = spendPlayerCommand(game, getCommandCost("attack"), "出征", attacker?.name);
+    if (!spent.ok) {
+      persist(addLogs(game, spent.logs));
+      setPendingBattle(undefined);
+      return;
+    }
+    const stateWithMode = {
+      ...spent.state,
+      battleControlMode: pendingBattle.controlMode,
+      commandPreferences: { ...spent.state.commandPreferences, battleControlMode: pendingBattle.controlMode },
+    };
+    const result = applyBattlefieldResult(stateWithMode, pendingBattle, battlefield);
+    const next = addLogs(result.state, [...spent.logs, ...result.logs]);
+    persist(next);
+    if (result.report) {
+      setBattleReport(result.report);
+      if (result.report.occupied) setSelectedCityId(pendingBattle.defenderCityId);
+    }
+    setPendingBattle(undefined);
   };
 
   const handleEndTurn = () => {
@@ -138,7 +169,30 @@ function App() {
 
   const handlePreferencesChange = (preferences: CommandPreferences) => {
     if (!game) return;
-    persist({ ...game, battleControlMode: preferences.battleControlMode, commandPreferences: preferences });
+    persist({
+      ...game,
+      battleControlMode: preferences.battleControlMode,
+      commandPreferences: preferences,
+      difficultyRuleSet: {
+        ...(game.difficultyRuleSet ?? {
+          aiLevel: "normal",
+          liubeiProtection: "standard",
+          eventFrequency: "normal",
+          battleComplexity: "standard",
+          stratagemPower: "normal",
+          captureRule: "normal",
+          supplyPressure: "normal",
+          randomness: "historical",
+          autoGovernance: "off",
+        }),
+        aiLevel: preferences.aiLevel ?? "normal",
+        liubeiProtection: preferences.liubeiProtectionMode ?? "standard",
+        eventFrequency: preferences.eventFrequency ?? "normal",
+        battleComplexity: preferences.battleComplexity ?? "standard",
+        autoGovernance: preferences.autoGovernanceMode ?? "off",
+      },
+      autoGovernanceSettings: { mode: preferences.autoGovernanceMode ?? "off" },
+    });
   };
 
   if (!game) {
@@ -154,24 +208,27 @@ function App() {
 
   const playerStats = getFactionStats(game, game.playerFactionId);
   const outcome = playerStats.cities === game.cities.length ? "victory" : playerStats.cities === 0 ? "defeat" : "";
+  const outcomePanel = outcome ? (
+    <section className={`outcome ${outcome}`}>
+      <h2>{outcome === "victory" ? "统一天下" : "势力灭亡"}</h2>
+      <p>{outcome === "victory" ? "四海归一，新霸王大陆已成一统。" : "主公失去全部城池，霸业至此终结。"}</p>
+    </section>
+  ) : undefined;
 
   return (
-    <div className="app-shell">
-      <TopBar state={game} onEndTurn={handleEndTurn} onReset={resetGame} />
-      {outcome && (
-        <section className={`outcome ${outcome}`}>
-          <h2>{outcome === "victory" ? "统一天下" : "势力灭亡"}</h2>
-          <p>{outcome === "victory" ? "四海归一，新霸王大陆已成一统。" : "主公失去全部城池，霸业至此终结。"}</p>
-        </section>
-      )}
-      <main className="game-layout">
-        <MapView state={game} selectedCityId={selectedCityId} onSelectCity={setSelectedCityId} />
-        <div className="right-stack">
+    <ImmersiveShell
+      density={game.commandPreferences.uiDensity ?? "standard"}
+      top={<TopBar state={game} onEndTurn={handleEndTurn} onReset={resetGame} onOpenSettings={() => setShowSettings(true)} />}
+      outcome={outcomePanel}
+      map={<MapView state={game} selectedCityId={selectedCityId} onSelectCity={setSelectedCityId} onAttackCity={handleAttack} />}
+      side={(
+        <>
           <CityPanel state={game} city={selectedCity} />
           <CommandPanel state={game} city={selectedCity} onAction={handleCityAction} onAttack={handleAttack} onPreferencesChange={handlePreferencesChange} />
-        </div>
-      </main>
-      <LogPanel logs={game.logs} />
+        </>
+      )}
+      bottom={<GameBottomLog logs={game.logs} advice={game.commandState.commandAdvice ?? game.commandState.recommendations} events={game.eventHistory} commandHistory={game.currentTurnCommandsUsed} />}
+    >
       {warCouncil && (
         <WarCouncilModal
           state={game}
@@ -187,12 +244,20 @@ function App() {
         state={game}
         factions={game.factions}
         onResolveBattle={handleResolvePendingBattle}
+        onResolveBattlefield={handleResolveBattlefield}
         onClose={() => {
           setBattleReport(undefined);
           setPendingBattle(undefined);
         }}
       />
-    </div>
+      {showSettings && (
+        <SettingsModal
+          preferences={game.commandPreferences}
+          onChange={handlePreferencesChange}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+    </ImmersiveShell>
   );
 }
 

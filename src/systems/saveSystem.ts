@@ -1,6 +1,10 @@
 import type { GameState } from "../types";
 import { GAME_VERSION } from "../constants/version";
 import { ensureCommandState } from "./commandSystem";
+import { ensureStrategyObjectives } from "./strategyObjectiveSystem";
+import { ensureWorldEvents } from "./worldEventSystem";
+import { ensureLiuBeiProtection } from "./liubeiBalanceSystem";
+import { ensureLivingWorldState } from "./livingWorldSystem";
 
 const SAVE_KEY = "three-kingdoms-new-overlord-save-v1";
 
@@ -30,7 +34,7 @@ export const loadGame = (): GameState | null => {
       localStorage.removeItem(SAVE_KEY);
       return null;
     }
-    return ensureCommandState({ ...parsed, version: GAME_VERSION });
+    return ensureLivingWorldState(ensureLiuBeiProtection(ensureStrategyObjectives(ensureWorldEvents(ensureCommandState({ ...parsed, version: GAME_VERSION })))));
   } catch {
     localStorage.removeItem(SAVE_KEY);
     return null;
@@ -40,7 +44,7 @@ export const loadGame = (): GameState | null => {
 // 保存完整游戏状态。
 export const saveGame = (state: GameState) => {
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(ensureCommandState({ ...state, version: GAME_VERSION })));
+    localStorage.setItem(SAVE_KEY, JSON.stringify(ensureLivingWorldState(ensureLiuBeiProtection(ensureStrategyObjectives(ensureWorldEvents(ensureCommandState({ ...state, version: GAME_VERSION })))))));
   } catch (error) {
     console.warn("存档失败，请检查浏览器 localStorage 是否可用。", error);
   }

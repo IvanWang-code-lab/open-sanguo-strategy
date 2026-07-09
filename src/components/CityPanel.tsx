@@ -1,6 +1,5 @@
 import type { CSSProperties } from "react";
-import { ART_ASSETS } from "../data/artAssets";
-import { getCharacterCanonProfile, getCharacterEvaluation } from "../data/characterCanonProfiles";
+import { getCharacterCanonProfile } from "../data/characterCanonProfiles";
 import { getGeneralVisualProfile } from "../data/generalVisualProfiles";
 import { skillName } from "../data/skills";
 import { totalTroops } from "../systems/unitSystem";
@@ -13,60 +12,43 @@ interface CityPanelProps {
 }
 
 export function CityPanel({ state, city }: CityPanelProps) {
-  const panelStyle = { "--war-room-bg": `url(${ART_ASSETS.backgrounds.warRoom})` } as CSSProperties;
-  if (!city) return <aside className="side-panel war-room-panel" style={panelStyle}>请选择一座城市。</aside>;
+  if (!city) return <aside className="city-seal-panel empty">沙盘未选城</aside>;
   const faction = state.factions.find((item) => item.id === city.factionId);
   const generals = state.generals.filter((general) => city.generals.includes(general.id));
+  const fatigue = city.cityFatigue ?? 0;
   return (
-    <aside className="side-panel war-room-panel" style={panelStyle}>
-      <div className="city-title">
-        <div>
-          <p className="eyebrow">城市详情</p>
-          <h2>{city.name}</h2>
-        </div>
-        <span className="faction-badge" style={{ borderColor: faction?.color, color: faction?.color }}>{faction?.name}</span>
+    <aside className="city-seal-panel" style={{ "--faction-color": faction?.color ?? "#d6b46a" } as CSSProperties}>
+      <header>
+        <span>城池印信</span>
+        <h2>{city.name}</h2>
+        <b>{faction?.name ?? "未知势力"} · {terrainLabels[city.terrain]}</b>
+      </header>
+      <div className="seal-meter-grid">
+        <span>兵力 <b>{totalTroops(city.troops).toLocaleString()}</b></span>
+        <span>金 <b>{city.gold}</b></span>
+        <span>粮 <b>{city.food}</b></span>
+        <span>农 <b>{city.agriculture}</b></span>
+        <span>商 <b>{city.commerce}</b></span>
+        <span>防 <b>{city.defense}</b></span>
+        <span>士 <b>{city.morale}</b></span>
+        <span>民 <b>{city.publicOrder}</b></span>
+        <span className={fatigue >= 60 ? "danger-text" : fatigue >= 35 ? "warning-text-inline" : ""}>疲 <b>{fatigue}</b></span>
+        <span>{city.actedThisTurn ? "已盖令" : "候令"}</span>
       </div>
-      <div className="stat-grid">
-        <span>地形：{terrainLabels[city.terrain]}</span>
-        <span>总兵：{totalTroops(city.troops).toLocaleString()}</span>
-        <span>金钱：{city.gold}</span>
-        <span>粮草：{city.food}</span>
-        <span>农业：{city.agriculture}</span>
-        <span>商业：{city.commerce}</span>
-        <span>城防：{city.defense}</span>
-        <span>士气：{city.morale}</span>
-        <span>民心：{city.publicOrder}</span>
-        <span>{city.actedThisTurn ? "已行动" : "未行动"}</span>
-      </div>
-      <h3>兵种</h3>
-      <div className="troop-list">
+      <p className="recovery-hint">{city.recoveryHint ?? "城市状态稳定。"}</p>
+      <div className="troop-ribbon">
         {Object.entries(city.troops).map(([type, count]) => (
           <span key={type}>{troopLabels[type as keyof typeof troopLabels]} {count}</span>
         ))}
       </div>
-      <h3>武将</h3>
-      <div className="general-list">
-        {generals.length === 0 ? <p className="muted">暂无武将驻守</p> : generals.map((general) => {
+      <div className="resident-generals">
+        {generals.length === 0 ? <span>暂无武将驻守</span> : generals.slice(0, 5).map((general) => {
           const canon = getCharacterCanonProfile(general.id);
           const visual = getGeneralVisualProfile(general.id);
           return (
-            <article className={`general-card ${canon?.rarity ?? "standard"}`} key={general.id}>
-              <div className="general-card-head">
-                <div>
-                  <strong>{general.name} Lv.{general.level}</strong>
-                  <span>{visual?.flavorTitle ?? canon?.gameArchetype ?? "地方武将"}</span>
-                </div>
-                <i>{canon?.rarity ?? "standard"}</i>
-              </div>
-              <div className="canon-tags">
-                {(canon?.roleTags ?? [visual?.roleStyle ?? "武将"]).slice(0, 4).map((tag) => <span key={tag}>{tag}</span>)}
-              </div>
-              <span>经验 {general.exp}/100 · 忠诚 {general.loyalty}</span>
-              <span>武{general.force} 智{general.intelligence} 统{general.command} 政{general.politics} 魅{general.charm}</span>
-              <span>技能：{general.skills.length ? general.skills.map(skillName).join("、") : "无"}</span>
-              <p className="general-evaluation">{getCharacterEvaluation(general.id)}</p>
-              {visual && <p className="visual-note">形象：{visual.visualKeywords.slice(0, 5).join("、")}</p>}
-            </article>
+            <span key={general.id} title={`${general.skills.map(skillName).join("、") || "无技能"}`}>
+              {general.name} · {visual?.flavorTitle ?? canon?.gameArchetype ?? "武将"} · Lv.{general.level}
+            </span>
           );
         })}
       </div>

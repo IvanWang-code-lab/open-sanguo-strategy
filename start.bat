@@ -1,8 +1,9 @@
 @echo off
 chcp 65001 >nul
-title Open Sanguo Strategy - 一键启动
+title 三国：新霸王大陆 - 一键启动
+
 echo ==========================================
-echo Open Sanguo Strategy - 一键启动
+echo 三国：新霸王大陆 - 一键启动
 echo ==========================================
 echo.
 
@@ -24,7 +25,7 @@ if errorlevel 1 (
 
 if not exist node_modules (
   echo 未发现 node_modules，正在执行 npm install...
-  echo 如下载较慢，请确认 .npmrc 使用公开 npm 镜像源。
+  echo 如果下载较慢，请确认 .npmrc 已使用 npmmirror 国内镜像。
   npm install
   if errorlevel 1 (
     echo.
@@ -37,7 +38,7 @@ if not exist node_modules (
 )
 
 echo.
-echo 依赖已就绪，正在启动公开学习版...
+echo 依赖已就绪，正在启动游戏...
 echo 请在浏览器打开终端提示的本地地址。
 npm run dev
 pause

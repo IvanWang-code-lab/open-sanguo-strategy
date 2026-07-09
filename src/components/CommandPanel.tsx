@@ -1,10 +1,14 @@
-import type { CSSProperties } from "react";
-import { useState } from "react";
-import { Eye, Hammer, HeartHandshake, Search, Shield, Sprout, Store, Sword, UserPlus } from "lucide-react";
-import { ART_ASSETS } from "../data/artAssets";
+import { useState, type CSSProperties, type ReactNode } from "react";
+import { Eye, Flag, Hammer, HeartHandshake, RefreshCw, Search, Shield, Sprout, Store, Sword, UserPlus } from "lucide-react";
+import { AdvisorLine } from "./immersive/AdvisorLine";
+import { CommandSeal } from "./immersive/CommandSeal";
+import { ScrollPanel } from "./immersive/ScrollPanel";
+import { WarBanner } from "./immersive/WarBanner";
 import { getAttackTargets } from "../systems/citySystem";
 import { actionLabels, formatCommandCost, getCommandBlockedReason, getCommandCost } from "../systems/commandSystem";
+import { isFrontlineCity } from "../systems/expeditionSystem";
 import { getBestGeneral } from "../systems/generalSystem";
+import { summarizeObjectives } from "../systems/strategyObjectiveSystem";
 import { totalTroops } from "../systems/unitSystem";
 import type { City, CityActionType, CommandPreferences, GameState } from "../types";
 
@@ -16,59 +20,74 @@ interface CommandPanelProps {
   onPreferencesChange?: (preferences: CommandPreferences) => void;
 }
 
-const politicalActions: Array<{ action: CityActionType; icon: JSX.Element }> = [
-  { action: "agriculture", icon: <Sprout size={17} /> },
-  { action: "commerce", icon: <Store size={17} /> },
-  { action: "defense", icon: <Shield size={17} /> },
-  { action: "pacify", icon: <HeartHandshake size={17} /> },
-  { action: "search", icon: <Search size={17} /> },
-];
+type OfficeKey = "civil" | "military" | "talent" | "intel" | "strategy";
 
-const militaryActions: Array<{ action: CityActionType; icon: JSX.Element }> = [
-  { action: "recruit", icon: <UserPlus size={17} /> },
-  { action: "train", icon: <Hammer size={17} /> },
-  { action: "scout", icon: <Eye size={17} /> },
-];
-
-const actionResourceText: Record<CityActionType, string> = {
-  agriculture: "金 -100",
-  commerce: "金 -100",
-  defense: "金 -110",
-  pacify: "金 -60",
-  search: "武将行动",
-  recruit: "金粮 -120",
-  train: "粮 -100",
-  scout: "武将行动",
+const officeLabels: Record<OfficeKey, string> = {
+  civil: "民政署",
+  military: "军务署",
+  talent: "人才署",
+  intel: "情报署",
+  strategy: "战略卷轴",
 };
 
-const actionExpectedText: Record<CityActionType, string> = {
-  agriculture: "粮草收入提升",
-  commerce: "金钱收入提升",
-  defense: "城防提升",
-  pacify: "民心与士气提升",
-  search: "可能发现人才",
-  recruit: "补充四类兵种",
-  train: "士气提升",
-  scout: "显示邻城兵力",
-};
+const civilActions: Array<{ action: CityActionType; icon: ReactNode; gain: string; risk: string }> = [
+  { action: "agriculture", icon: <Sprout size={17} />, gain: "粮产 +8", risk: "短期耗金" },
+  { action: "commerce", icon: <Store size={17} />, gain: "收入 +8", risk: "短期耗金" },
+  { action: "pacify", icon: <HeartHandshake size={17} />, gain: "民心 +8", risk: "消耗指令" },
+  { action: "rest", icon: <RefreshCw size={17} />, gain: "疲劳下降", risk: "放缓扩张" },
+  { action: "market", icon: <Store size={17} />, gain: "粮草补给", risk: "耗金" },
+];
+
+const militaryActions: Array<{ action: CityActionType; icon: ReactNode; gain: string; risk: string }> = [
+  { action: "recruit", icon: <UserPlus size={17} />, gain: "兵力增加", risk: "耗金耗粮" },
+  { action: "train", icon: <Hammer size={17} />, gain: "士气 +8", risk: "耗粮" },
+  { action: "defense", icon: <Shield size={17} />, gain: "城防 +8", risk: "耗金" },
+  { action: "suppressBandits", icon: <Flag size={17} />, gain: "治安下降", risk: "小战损" },
+];
+
+const talentActions: Array<{ action: CityActionType; icon: ReactNode; gain: string; risk: string }> = [
+  { action: "search", icon: <Search size={17} />, gain: "发现人才", risk: "概率事件" },
+];
+
+const intelActions: Array<{ action: CityActionType; icon: ReactNode; gain: string; risk: string }> = [
+  { action: "scout", icon: <Eye size={17} />, gain: "查看敌情", risk: "消耗指令" },
+  { action: "spy", icon: <Search size={17} />, gain: "密探暗线", risk: "可能暴露" },
+];
+
+const strategyActions: Array<{ action: CityActionType; icon: ReactNode; gain: string; risk: string }> = [
+  { action: "autoGovern", icon: <RefreshCw size={17} />, gain: "自动推荐", risk: "仍耗指令" },
+];
 
 export function CommandPanel({ state, city, onAction, onAttack, onPreferencesChange }: CommandPanelProps) {
-  const [tab, setTab] = useState<"city" | "military" | "generals" | "faction" | "intel">("city");
-  const panelStyle = { "--war-room-bg": `url(${ART_ASSETS.backgrounds.warRoom})` } as CSSProperties;
-  if (!city) return <section className="command-panel war-room-panel" style={panelStyle}>请选择城市后下达指令。</section>;
+  const [office, setOffice] = useState<OfficeKey>("civil");
+  const objectives = summarizeObjectives(state);
+
+  if (!city) {
+    return (
+      <ScrollPanel className="magistrate-scroll empty" title="府衙待命" subtitle="请选择城池">
+        <p>点击天下沙盘中的己方城池，即可进入府衙下达统一指令。</p>
+        <AdvisorLine lines={state.commandState.commandAdvice ?? state.commandState.recommendations} />
+      </ScrollPanel>
+    );
+  }
 
   const own = city.factionId === state.playerFactionId;
+  const faction = state.factions.find((item) => item.id === city.factionId);
   const activeGenerals = state.generals.filter((general) => city.generals.includes(general.id) && general.status === "active");
   const bestBattle = getBestGeneral(state, city.id, "battle");
   const bestPolitics = getBestGeneral(state, city.id, "politics");
   const targets = getAttackTargets(state, city.id);
-  const faction = state.factions.find((item) => item.id === city.factionId);
+  const troops = totalTroops(city.troops);
+  const fatigue = city.cityFatigue ?? 0;
+  const frontTag = isFrontlineCity(state, city.id) ? "前线" : "后方";
+
   const recommendAction = (action: CityActionType) => {
+    if (fatigue >= 45 && action === "rest") return true;
     if (city.publicOrder < 55 && action === "pacify") return true;
-    if (city.food < totalTroops(city.troops) * 0.35 && action === "agriculture") return true;
+    if (city.food < troops * 0.35 && action === "agriculture") return true;
     if (city.gold < 260 && action === "commerce") return true;
     if (city.morale < 62 && action === "train") return true;
-    if (totalTroops(city.troops) < 1200 && action === "recruit") return true;
+    if (troops < 1200 && action === "recruit") return true;
     if (targets.length > 0 && action === "scout") return true;
     return false;
   };
@@ -80,139 +99,162 @@ export function CommandPanel({ state, city, onAction, onAttack, onPreferencesCha
     if (action === "defense" && city.gold < 110) return "金钱不足";
     if (action === "train" && city.food < 100) return "粮草不足";
     if (action === "pacify" && city.gold < 60) return "金钱不足";
+    if (action === "rest" && city.gold < 40) return "金钱不足";
+    if (action === "market" && city.gold < 120) return "金钱不足";
+    if (action === "spy" && city.gold < 80) return "金钱不足";
+    if (action === "suppressBandits" && (city.banditPressure ?? 0) + (city.localUnrest ?? 0) <= 0) return "治安尚稳";
     return "";
   };
 
   const actionReason = (action: CityActionType) =>
     getCommandBlockedReason(state, action, city.factionId, city.actedThisTurn, resourceReason(action));
 
-  const renderButton = ({ action, icon }: { action: CityActionType; icon: JSX.Element }) => {
+  const renderSeal = ({ action, icon, gain, risk }: { action: CityActionType; icon: ReactNode; gain: string; risk: string }) => {
     const reason = actionReason(action);
     const cost = formatCommandCost(getCommandCost(action));
+    const recommended = recommendAction(action);
     return (
-      <button key={action} className="command-button" disabled={Boolean(reason)} title={reason || `${actionLabels[action]}，${cost}`} onClick={() => onAction(action)}>
+      <CommandSeal
+        key={action}
+        disabled={Boolean(reason)}
+        recommended={recommended}
+        title={reason || `${actionLabels[action]}：${cost}；${gain}；风险：${risk}`}
+        onClick={() => onAction(action)}
+      >
         {icon}
-        <strong>{actionLabels[action]} {recommendAction(action) && <em>推荐</em>}</strong>
+        <strong>{actionLabels[action]}</strong>
         <span>{cost}</span>
-        <small>{reason || `${actionResourceText[action]} · ${actionExpectedText[action]}`}</small>
-      </button>
+        <small>{reason || `${gain} · ${risk}`}</small>
+        {recommended && <em>军师荐</em>}
+      </CommandSeal>
     );
   };
 
-  return (
-    <section className="command-panel war-room-panel" style={panelStyle}>
-      <div className="selected-city-command-card">
-        <div>
-          <p className="eyebrow">选中城市</p>
-          <h2>{city.name}</h2>
-          <span style={{ color: faction?.color }}>{faction?.name ?? "未知势力"}</span>
-        </div>
-        <div className="city-vitals">
-          <span>兵力 {totalTroops(city.troops).toLocaleString()}</span>
-          <span>城防 {city.defense}</span>
-          <span>士气 {city.morale}</span>
-          <span>民心 {city.publicOrder}</span>
-          <b className={city.actedThisTurn ? "acted" : ""}>{city.actedThisTurn ? "已行动" : "待命"}</b>
-        </div>
-      </div>
-      <div className="command-head">
-        <div>
-          <p className="eyebrow">本月指令</p>
-          <h3>{city.name}军政厅</h3>
-        </div>
-        <div className="command-points">
-          <span>政令 {state.commandState.politicalOrders}/{state.commandState.maxPoliticalOrders}</span>
-          <span>军令 {state.commandState.militaryOrders}/{state.commandState.maxMilitaryOrders}</span>
-        </div>
-      </div>
-      <div className="advisor-strip">
-        {(state.commandState.recommendations ?? [state.commandState.advisory]).map((item) => <span key={item}>军师建议：{item}</span>)}
-      </div>
-      <div className="command-tabs">
-        <button className={tab === "city" ? "selected" : ""} onClick={() => setTab("city")}>城市指令</button>
-        <button className={tab === "military" ? "selected" : ""} onClick={() => setTab("military")}>军事指令</button>
-        <button className={tab === "generals" ? "selected" : ""} onClick={() => setTab("generals")}>武将</button>
-        <button className={tab === "faction" ? "selected" : ""} onClick={() => setTab("faction")}>势力</button>
-        <button className={tab === "intel" ? "selected" : ""} onClick={() => setTab("intel")}>情报</button>
-      </div>
-      {tab === "city" && (
-        <div className="command-grid">
-          {politicalActions.map(renderButton)}
-        </div>
-      )}
-      {tab === "military" && (
+  const renderOffice = () => {
+    if (office === "civil") return <div className="seal-grid">{civilActions.map(renderSeal)}</div>;
+    if (office === "military") {
+      return (
         <>
-          <div className="command-grid">
-            {militaryActions.map(renderButton)}
-          </div>
-          <h3>出征目标</h3>
-          <div className="target-list">
-            {!own && <p className="muted">只有己方城市可以出征。</p>}
-            {own && targets.length === 0 && <p className="muted">周边暂无敌对城市。</p>}
+          <div className="seal-grid">{militaryActions.map(renderSeal)}</div>
+          <div className="expedition-edict">
+            <h4>出征令</h4>
+            {!own && <p>非己方城池不可出征。</p>}
+            {own && targets.length === 0 && <p>周边暂无可攻击目标。</p>}
             {own && targets.map((target) => {
               const reason = getCommandBlockedReason(
                 state,
                 "attack",
                 city.factionId,
                 city.actedThisTurn,
-                activeGenerals.length === 0 ? "无可用武将" : totalTroops(city.troops) < 200 ? "兵力不足" : "",
+                activeGenerals.length === 0 ? "无可用武将" : troops < 500 ? "兵力不足，至少需要 500 兵力" : "",
               );
+              const advantage = troops > totalTroops(target.troops) * 1.25;
               return (
-                <button key={target.id} className="command-button attack danger" disabled={Boolean(reason)} title={reason || `出征 ${target.name}`} onClick={() => onAttack(target.id)}>
+                <CommandSeal
+                  key={target.id}
+                  danger
+                  recommended={advantage}
+                  disabled={Boolean(reason)}
+                  title={reason || `进入军议：${city.name} → ${target.name}`}
+                  onClick={() => onAttack(target.id)}
+                >
                   <Sword size={17} />
-                  <strong>出征 {target.name} {totalTroops(city.troops) > totalTroops(target.troops) * 1.25 && <em>推荐</em>}</strong>
+                  <strong>发兵 {target.name}</strong>
                   <span>{formatCommandCost(getCommandCost("attack"))}</span>
-                  <small>{reason || `敌兵 ${totalTroops(target.troops).toLocaleString()} · 城防${target.defense}`}</small>
-                </button>
+                  <small>{reason || `敌兵 ${totalTroops(target.troops).toLocaleString()} · 城防 ${target.defense}`}</small>
+                  {advantage && <em>可图</em>}
+                </CommandSeal>
               );
             })}
           </div>
         </>
-      )}
-      {tab === "generals" && (
-        <div className="council-hint">
-          <p>主将候选：{bestBattle?.name ?? "无"}。内政主官：{bestPolitics?.name ?? "无"}。</p>
-          <p>本城现有武将 {activeGenerals.length} 人，出征时军议会自动编成主将、军师、先锋和左右翼。</p>
+      );
+    }
+    if (office === "talent") {
+      return (
+        <>
+          <div className="seal-grid">{talentActions.map(renderSeal)}</div>
+          <div className="bamboo-list">
+            <p>主将候选：{bestBattle?.name ?? "暂无"}；内政主官：{bestPolitics?.name ?? "暂无"}。</p>
+            {activeGenerals.slice(0, 8).map((general) => (
+              <span key={general.id}>{general.name} · 统{general.command} 武{general.force} 智{general.intelligence}</span>
+            ))}
+          </div>
+        </>
+      );
+    }
+    if (office === "intel") {
+      return (
+        <>
+          <div className="seal-grid">{intelActions.map(renderSeal)}</div>
+          <div className="bamboo-list">
+            {(state.eventHistory ?? []).slice(0, 5).map((event) => (
+              <span key={event.id}>【{event.title}】{event.message}</span>
+            ))}
+          </div>
+        </>
+      );
+    }
+    return (
+      <div className="strategy-scroll">
+        <div className="seal-grid">{strategyActions.map(renderSeal)}</div>
+        <WarBanner color={faction?.color} label={state.factionRoute?.title ?? "势力路线"} sublabel={state.factionRoute?.currentStep} />
+        <div className="bamboo-list">
+          <span>势力特性：{state.factionUniqueMechanics?.[state.playerFactionId]?.name ?? "乱世求生"}</span>
+          <span>名望/正统：{state.rulerReputation ?? 50}/{state.factionLegitimacy ?? 50}</span>
+          <span>季节影响：{state.seasonState?.advice ?? "节律稳定"}</span>
+          <span>商队：{state.caravanMarketState?.active ? "可采购" : "暂无商队"}</span>
         </div>
-      )}
-      {tab === "faction" && (
-        <div className="council-hint">
-          <p>指令效率：{state.commandState.commandEfficiency}% · 统治负担：{state.commandState.governanceLoad}</p>
-          <p>平均民心：{state.commandState.averagePublicOrder}。{state.commandState.advisory}</p>
-          <h3>战斗设置</h3>
-          <div className="settings-row">
-            {(["auto", "standard", "deep"] as const).map((mode) => (
-              <button key={mode} className={state.commandPreferences.battleControlMode === mode ? "selected" : ""} onClick={() => onPreferencesChange?.({ ...state.commandPreferences, battleControlMode: mode })}>
-                {mode === "auto" ? "自动" : mode === "standard" ? "标准" : "深度实验"}
-              </button>
-            ))}
-          </div>
-          <div className="settings-row">
-            {(["normal", "fast"] as const).map((speed) => (
-              <button key={speed} className={state.commandPreferences.battleSpeed === speed ? "selected" : ""} onClick={() => onPreferencesChange?.({ ...state.commandPreferences, battleSpeed: speed })}>
-                {speed === "normal" ? "普通速度" : "快速"}
-              </button>
-            ))}
-          </div>
-          <div className="settings-row">
-            {(["important", "brief"] as const).map((level) => (
-              <button key={level} className={state.commandPreferences.aiBattleLogLevel === level ? "selected" : ""} onClick={() => onPreferencesChange?.({ ...state.commandPreferences, aiBattleLogLevel: level })}>
-                {level === "important" ? "AI重要日志" : "AI简报"}
-              </button>
-            ))}
-          </div>
+        <div className="objective-progress">
+          <b>{objectives.active.name}</b>
+          <span>{objectives.active.progress}/{objectives.active.target}</span>
+          <progress value={objectives.active.progress} max={objectives.active.target} />
+          <p>{objectives.active.advice}</p>
         </div>
-      )}
-      {tab === "intel" && (
-        <div className="intel-list">
-          {targets.length === 0 ? <p className="muted">暂无相邻敌对目标。</p> : targets.map((target) => (
-            <article key={target.id}>
-              <strong>{target.name}</strong>
-              <span>兵力 {totalTroops(target.troops).toLocaleString()} · 城防 {target.defense} · 民心 {target.publicOrder}</span>
-            </article>
+        <div className="bamboo-list">
+          {(state.regionObjectives ?? []).map((objective) => (
+            <span key={objective.id}>{objective.completed ? "已成" : "进行"} · {objective.name} {objective.progress}/{objective.target}</span>
           ))}
         </div>
-      )}
-    </section>
+      </div>
+    );
+  };
+
+  return (
+    <ScrollPanel className="magistrate-scroll" title={`${city.name} 府衙`} subtitle={`${frontTag} · ${faction?.name ?? "未知势力"}`}>
+      <div className="city-plaque" style={{ "--faction-color": faction?.color ?? "#d6b46a" } as CSSProperties}>
+        <div>
+          <p>太守/主将：{bestPolitics?.name ?? bestBattle?.name ?? "待任"}</p>
+          <h2>{city.name}</h2>
+          <span>{city.actedThisTurn ? "本回合已盖令" : "候令"} · 地形 {city.terrain}</span>
+        </div>
+        <div className="city-ledger">
+          <span>兵 {troops.toLocaleString()}</span>
+          <span>防 {city.defense}</span>
+          <span>民 {city.publicOrder}</span>
+          <span>士 {city.morale}</span>
+          <span className={fatigue >= 60 ? "danger-text" : fatigue >= 35 ? "warning-text-inline" : ""}>疲 {fatigue}</span>
+        </div>
+      </div>
+
+      <AdvisorLine lines={state.commandState.commandAdvice ?? state.commandState.recommendations} fallback={state.commandState.advisory} />
+
+      <nav className="office-tabs">
+        {(Object.keys(officeLabels) as OfficeKey[]).map((key) => (
+          <button key={key} className={office === key ? "selected" : ""} onClick={() => setOffice(key)}>
+            {officeLabels[key]}
+          </button>
+        ))}
+      </nav>
+
+      {renderOffice()}
+
+      <div className="turn-command-history">
+        <b>本回合命令</b>
+        {(state.currentTurnCommandsUsed ?? []).length === 0
+          ? <span>尚未下令。</span>
+          : state.currentTurnCommandsUsed.slice(-5).map((item) => <span key={item}>{item}</span>)}
+      </div>
+    </ScrollPanel>
   );
 }

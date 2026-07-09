@@ -2,6 +2,10 @@ import { runAiTurn } from "./aiSystem";
 import { refreshPlayerCommands } from "./commandSystem";
 import { addLogs } from "./eventSystem";
 import { checkGeneralAppearances } from "./generalSystem";
+import { ensureStrategyObjectives } from "./strategyObjectiveSystem";
+import { generateWorldEvents } from "./worldEventSystem";
+import { applyLiuBeiEarlySupport, ensureLiuBeiProtection } from "./liubeiBalanceSystem";
+import { advanceLivingWorld, ensureLivingWorldState } from "./livingWorldSystem";
 import type { GameState, WeatherType } from "../types";
 
 const weatherPool: WeatherType[] = ["sunny", "rain", "fog", "snow"];
@@ -20,6 +24,9 @@ const produceResources = (state: GameState) => {
       ...city,
       gold: city.gold + goldGain,
       food: city.food + foodGain,
+      cityFatigue: Math.max(0, (city.cityFatigue ?? 0) - 2),
+      morale: Math.min(100, city.morale + ((city.cityFatigue ?? 0) <= 25 ? 1 : 0)),
+      recoveryHint: (city.cityFatigue ?? 0) > 60 ? "城市疲劳仍高，建议安排休整。" : city.recoveryHint ?? "状态稳定。",
     };
   });
   return { ...state, cities };
@@ -34,6 +41,15 @@ export const endTurn = (state: GameState): GameState => {
   };
   const logs: string[] = ["各地完成本月资源产出"];
   next = produceResources(next);
+  const liuBeiSupport = applyLiuBeiEarlySupport(next);
+  next = liuBeiSupport.state;
+  logs.push(...liuBeiSupport.logs);
+  const worldEvents = generateWorldEvents(next);
+  next = worldEvents.state;
+  logs.push(...worldEvents.logs);
+  const livingWorld = advanceLivingWorld(next);
+  next = livingWorld.state;
+  logs.push(...livingWorld.logs);
   const newWeather = weatherPool[Math.floor(Math.random() * weatherPool.length)];
   logs.push(newWeather !== next.currentWeather ? `天气转为${weatherText[newWeather]}` : `天气维持${weatherText[newWeather]}`);
   next = { ...next, currentWeather: newWeather };
@@ -47,8 +63,9 @@ export const endTurn = (state: GameState): GameState => {
     ...next,
     cities: next.cities.map((city) => ({ ...city, actedThisTurn: false })),
   };
-  next = refreshPlayerCommands(next);
-  logs.push(`新回合指令刷新：政令${next.commandState.politicalOrders}/${next.commandState.maxPoliticalOrders}，军令${next.commandState.militaryOrders}/${next.commandState.maxMilitaryOrders}`);
+  next = refreshPlayerCommands(ensureLivingWorldState(ensureLiuBeiProtection(next)));
+  next = ensureStrategyObjectives(next);
+  logs.push(`新回合指令刷新：指令${next.commandState.commands ?? 0}/${next.commandState.maxCommands ?? 0}`);
   return addLogs(next, logs);
 };
 

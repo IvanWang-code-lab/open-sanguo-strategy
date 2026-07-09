@@ -1,21 +1,28 @@
 {
-  "name": "open-sanguo-strategy",
-  "version": "0.1.0-alpha",
-  "description": "An open-source Three Kingdoms strategy sandbox for AI-assisted game development.",
-  "license": "MIT",
+  "name": "three-kingdoms-new-overlord",
+  "version": "19.0.0-true-living-world-grand-strategy-final-boss-edition",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "validate:data": "node scripts/validate-data.mjs",
+    "validate:assets": "node scripts/validate-assets.mjs",
+    "smoke": "node scripts/run-smoke.mjs",
+    "simulate:10": "node scripts/run-simulate-10.mjs",
+    "simulate:30": "node scripts/run-simulate-30.mjs",
+    "simulate:liubei:12": "node scripts/run-simulate-liubei-12.mjs",
+    "check:release": "npm run validate:data && npm run validate:assets && npm run smoke && npm run simulate:10 && npm run simulate:liubei:12 && npm run build",
+    "check:release:long": "npm run check:release && npm run simulate:30"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^5.4.11",
-    "typescript": "^5.6.3",
+    "lucide-react": "^0.545.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "lucide-react": "^0.545.0"
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

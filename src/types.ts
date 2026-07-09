@@ -1,17 +1,40 @@
 export type TroopType = "infantry" | "cavalry" | "archer" | "navy";
 export type TerrainType = "plain" | "mountain" | "river" | "forest" | "city";
 export type WeatherType = "sunny" | "rain" | "fog" | "snow";
-export type AiStyle = "aggressive" | "defensive" | "economic" | "balanced";
+export type AiStyle = "aggressive" | "defensive" | "economic" | "balanced" | "opportunist";
 export type GeneralStatus = "active" | "wild" | "locked" | "captured" | "dead";
 export type SkillType = "active" | "passive" | "city";
 export type SkillTrigger = "battle_start" | "attack" | "defend" | "random" | "city_turn";
-export type CityActionType = "recruit" | "agriculture" | "commerce" | "defense" | "train" | "search" | "pacify" | "scout";
-export type BattleControlMode = "auto" | "standard" | "deep";
+export type CityActionType =
+  | "recruit"
+  | "agriculture"
+  | "commerce"
+  | "defense"
+  | "train"
+  | "search"
+  | "pacify"
+  | "scout"
+  | "rest"
+  | "market"
+  | "spy"
+  | "suppressBandits"
+  | "autoGovern";
+export type BattleControlMode = "classic" | "autoWatch" | "quick" | "auto" | "standard" | "deep";
 export type BattleSpeed = "normal" | "fast";
 export type AiBattleLogLevel = "important" | "brief";
 export type FormationStyle = "auto" | "cavalry" | "archer" | "steady" | "siege";
 export type FormationTroopPreference = "balanced" | "infantry" | "cavalry" | "archer" | "navy" | "siege";
 export type BattlePhase = "deployment" | "probe" | "clash" | "breakthrough" | "resolution";
+export type BattleLane = "left" | "center" | "right";
+export type BattleSide = "player" | "enemy";
+export type BattleUnitRole = "commander" | "advisor" | "vanguard" | "left" | "right" | "rear" | "reserve";
+export type BattleCommandType = "advance" | "attack" | "defend" | "retreat" | "focus" | "wait" | "skill" | "withdraw";
+export type ActiveSkillType = "attack" | "buff" | "debuff" | "tactic" | "heal" | "control" | "siege";
+export type ActiveSkillTargetType = "self" | "enemyUnit" | "allyUnit" | "lane" | "allEnemy" | "allAlly" | "gate";
+export type BattlefieldMode = "classic" | "autoWatch" | "quick";
+export type MapMode = "normal" | "faction" | "frontline" | "publicOrder" | "military";
+export type EventType = "trend" | "regional" | "talent" | "publicOrder" | "warPressure" | "commerce" | "disaster" | "anecdote" | "scenario";
+export type ObjectiveCategory = "region" | "factionRoute" | "ending";
 
 export interface Troops {
   infantry: number;
@@ -49,6 +72,12 @@ export interface City {
   publicOrder: number;
   actedThisTurn: boolean;
   generals: string[];
+  cityFatigue?: number;
+  woundedTroops?: number;
+  recoveryHint?: string;
+  banditPressure?: number;
+  localUnrest?: number;
+  citySpecialtyId?: string;
 }
 
 export interface General {
@@ -80,14 +109,24 @@ export interface Skill {
 }
 
 export interface CommandState {
+  commands?: number;
+  maxCommands?: number;
+  usedCommands?: number;
   politicalOrders: number;
   maxPoliticalOrders: number;
   militaryOrders: number;
   maxMilitaryOrders: number;
+  usedPoliticalOrders?: number;
+  usedMilitaryOrders?: number;
   commandEfficiency: number;
   governanceLoad: number;
   averagePublicOrder: number;
   advisory: string;
+  commandAdvice?: string[];
+  commandBreakdown?: {
+    political: CommandBreakdown;
+    military: CommandBreakdown;
+  };
   politicalBreakdown?: CommandBreakdown;
   militaryBreakdown?: CommandBreakdown;
   usedOrders?: number;
@@ -96,6 +135,7 @@ export interface CommandState {
 }
 
 export interface CommandCost {
+  commands?: number;
   political: number;
   military: number;
 }
@@ -105,9 +145,40 @@ export interface CommandBreakdown {
   cityBonus: number;
   rulerBonus: number;
   factionBonus: number;
+  policyBonus?: number;
   governancePenalty: number;
   final: number;
   detail: string[];
+}
+
+export type RiskLevel = "low" | "medium" | "high";
+export type SortiePreset = "probe" | "standard" | "main" | "allIn" | "custom";
+export type GarrisonPreset = "20" | "30" | "50" | "custom";
+
+export interface ExpeditionPlan {
+  sortiePreset: SortiePreset;
+  garrisonPreset: GarrisonPreset;
+  sortieRatio: number;
+  garrisonRatio: number;
+  minimumGarrison: number;
+  recommendedGarrison: number;
+  sortieTroops: Troops;
+  garrisonTroops: Troops;
+  sortieTotal: number;
+  garrisonTotal: number;
+  supplyCost: number;
+  marchRisk: string;
+  garrisonRisk: string;
+  garrisonRiskLevel: RiskLevel;
+  expectedLossRisk: number;
+  advice: string;
+}
+
+export interface ExpeditionPlanOptions {
+  sortiePreset?: SortiePreset;
+  garrisonPreset?: GarrisonPreset;
+  sortieRatio?: number;
+  garrisonRatio?: number;
 }
 
 export interface TroopAssignment {
@@ -135,6 +206,19 @@ export interface ArmyFormation {
   tacticStyle: string;
   attackDirection: "center" | "left" | "right" | "balanced";
   totalTroops: number;
+  sortieTroops?: Troops;
+  garrisonTroops?: Troops;
+  sortiePreset?: SortiePreset;
+  garrisonPreset?: GarrisonPreset;
+  sortieRatio?: number;
+  garrisonRatio?: number;
+  minimumGarrison?: number;
+  recommendedGarrison?: number;
+  supplyCost?: number;
+  marchRisk?: string;
+  garrisonRisk?: string;
+  garrisonRiskLevel?: RiskLevel;
+  expeditionAdvice?: string;
   capacityPressure: number;
   scores?: FormationScores;
   summary: string;
@@ -147,6 +231,8 @@ export interface FormationRoleOverrides {
   leftGeneralId?: string;
   rightGeneralId?: string;
   reserveGeneralId?: string;
+  includedGeneralIds?: string[];
+  troopWeightOverrides?: Partial<Record<TroopAssignment["role"], number>>;
 }
 
 export interface FormationScores {
@@ -176,6 +262,7 @@ export interface BattleTacticalChoice {
   chosenBy: "player" | "ai" | "auto";
   supportingGeneralId?: string;
   success: boolean;
+  successLevel?: "success" | "partial" | "failed" | "countered";
   effects: BattleTacticalEffects;
   description: string;
   requirements?: string[];
@@ -183,6 +270,149 @@ export interface BattleTacticalChoice {
   actualEffects?: string;
   recommendedWhen?: string;
   riskLevel?: "低" | "中" | "高";
+  predicted?: string;
+  actual?: string;
+  comboHint?: string;
+  counterHint?: string;
+  decisiveEvent?: string;
+}
+
+export interface RegionObjective {
+  id: string;
+  name: string;
+  category: ObjectiveCategory;
+  description: string;
+  conditionText: string;
+  progress: number;
+  target: number;
+  completed: boolean;
+  reward: string;
+  advice: string;
+  relatedCityIds: string[];
+}
+
+export interface FactionRoute {
+  factionId: string;
+  title: string;
+  steps: string[];
+  currentStep: string;
+  endingHint: string;
+}
+
+export interface WorldEvent {
+  id: string;
+  turn: number;
+  year: number;
+  month: number;
+  type: EventType;
+  title: string;
+  message: string;
+  importance: "normal" | "major";
+  affectedCityId?: string;
+  affectedFactionId?: string;
+  effects: string[];
+}
+
+export type SeasonType = "spring" | "summer" | "autumn" | "winter";
+export type CourtStance = "supportive" | "neutral" | "watching" | "hostile";
+export type SpyNetworkLevel = "none" | "contact" | "spy" | "inside";
+export type DifficultyAiLevel = "casual" | "normal" | "hard";
+export type EventFrequency = "low" | "normal" | "high";
+export type BattleComplexity = "simple" | "standard" | "deep";
+export type AutoGovernanceMode = "off" | "advice" | "safeAuto";
+
+export interface FactionUniqueMechanic {
+  id: string;
+  name: string;
+  description: string;
+  effects: string[];
+}
+
+export interface SeasonState {
+  season: SeasonType;
+  turnInSeason: number;
+  advice: string;
+}
+
+export interface WeatherState {
+  current: WeatherType;
+  effectText: string;
+}
+
+export interface MarketGood {
+  id: string;
+  name: string;
+  price: number;
+  effect: string;
+  risk?: string;
+}
+
+export interface CaravanMarketState {
+  active: boolean;
+  cityId?: string;
+  expiresTurn: number;
+  goods: MarketGood[];
+  blackMarket?: boolean;
+}
+
+export interface SpyNetwork {
+  cityId: string;
+  ownerFactionId: string;
+  level: SpyNetworkLevel;
+  progress: number;
+  risk: number;
+  discovered?: boolean;
+}
+
+export interface TalentRumor {
+  id: string;
+  cityId: string;
+  text: string;
+  clueLevel: number;
+  expiresTurn: number;
+  resolved?: boolean;
+}
+
+export interface DomesticCrisis {
+  id: string;
+  cityId: string;
+  type: "corruption" | "granaryFire" | "unrest" | "localClan" | "fatigue" | "plague" | "market";
+  title: string;
+  severity: number;
+  handled?: boolean;
+}
+
+export interface CitySpecialty {
+  cityId: string;
+  name: string;
+  description: string;
+  effects: string[];
+}
+
+export interface WarArchiveEntry {
+  id: string;
+  turn: number;
+  title: string;
+  summary: string;
+  highlights: string[];
+}
+
+export interface DifficultyRuleSet {
+  aiLevel: DifficultyAiLevel;
+  liubeiProtection: "off" | "standard" | "extended";
+  eventFrequency: EventFrequency;
+  battleComplexity: BattleComplexity;
+  stratagemPower: "low" | "normal" | "high";
+  captureRule: "lenient" | "normal" | "strict";
+  supplyPressure: "low" | "normal" | "high";
+  randomness: "historical" | "lightRandom" | "highRandom";
+  autoGovernance: AutoGovernanceMode;
+}
+
+export interface TutorialState {
+  enabled: boolean;
+  completedSteps: string[];
+  skipped?: boolean;
 }
 
 export interface PendingBattle {
@@ -190,6 +420,134 @@ export interface PendingBattle {
   defenderCityId: string;
   formation: ArmyFormation;
   controlMode: BattleControlMode;
+}
+
+export interface ActiveSkill {
+  id: string;
+  name: string;
+  type: ActiveSkillType;
+  cost: number;
+  cooldown: number;
+  targetType: ActiveSkillTargetType;
+  range: number;
+  effect: string;
+  description: string;
+  requiredRole?: BattleUnitRole[];
+  visualText: string;
+}
+
+export interface BattleUnitStatusEffect {
+  id: string;
+  name: string;
+  duration: number;
+  attackModifier?: number;
+  defenseModifier?: number;
+  moraleModifier?: number;
+  movementModifier?: number;
+  preventedSkill?: boolean;
+}
+
+export interface BattleUnit {
+  id: string;
+  side: BattleSide;
+  generalId: string;
+  generalName: string;
+  role: BattleUnitRole;
+  lane: BattleLane;
+  position: number;
+  troops: number;
+  maxTroops: number;
+  morale: number;
+  skillEnergy: number;
+  cooldowns: Record<string, number>;
+  statusEffects: BattleUnitStatusEffect[];
+  currentOrder: BattleCommandType;
+  targetUnitId?: string;
+  skills: string[];
+  unitTypeMix: Troops;
+  isRouted: boolean;
+  kills: number;
+  losses: number;
+  skillUses: number;
+}
+
+export interface BattleCommand {
+  unitId: string;
+  commandType: BattleCommandType;
+  targetUnitId?: string;
+  skillId?: string;
+  lane?: BattleLane;
+  issuedBy: "player" | "ai";
+}
+
+export interface BattlefieldUnitResult {
+  unitId: string;
+  generalName: string;
+  role: BattleUnitRole;
+  startTroops: number;
+  remainingTroops: number;
+  losses: number;
+  kills: number;
+  skillUses: number;
+  routed: boolean;
+}
+
+export interface BattlefieldSkillRecord {
+  round: number;
+  unitId: string;
+  generalName: string;
+  skillId: string;
+  skillName: string;
+  target: string;
+  effect: string;
+}
+
+export interface BattlefieldCommandRecord {
+  round: number;
+  unitId: string;
+  generalName: string;
+  commandType: BattleCommandType;
+  target?: string;
+  summary: string;
+}
+
+export interface BattlefieldResult {
+  winner: "attacker" | "defender" | "draw" | "withdraw";
+  outcome: "victory" | "defeat" | "draw" | "withdraw";
+  occupied: boolean;
+  unitResults: BattlefieldUnitResult[];
+  skillRecords: BattlefieldSkillRecord[];
+  commandRecords: BattlefieldCommandRecord[];
+  cityChanges: string[];
+  experienceGains: string[];
+  summary: string;
+  nextAdvice: string;
+  attackerRemaining: number;
+  defenderRemaining: number;
+  attackerLoss: number;
+  defenderLoss: number;
+  cityDefenseDamage: number;
+}
+
+export interface BattlefieldState {
+  battleId: string;
+  round: number;
+  maxRounds: number;
+  terrain: TerrainType;
+  weather: WeatherType;
+  battleType: "field" | "siege" | "encounter";
+  attackerCityId: string;
+  defenderCityId: string;
+  playerUnits: BattleUnit[];
+  enemyUnits: BattleUnit[];
+  selectedUnitId?: string;
+  pendingCommands: Record<string, BattleCommand>;
+  battleLog: string[];
+  isPaused: boolean;
+  mode: BattlefieldMode;
+  cityDefense: number;
+  maxCityDefense: number;
+  result?: BattlefieldResult;
 }
 
 export interface BattleReport {
@@ -206,6 +564,16 @@ export interface BattleReport {
   defenderDefense: number;
   attackerStart: number;
   defenderStart: number;
+  sortieTroops?: Troops;
+  garrisonTroops?: Troops;
+  sortieTotal?: number;
+  garrisonTotal?: number;
+  supplyCost?: number;
+  garrisonRisk?: string;
+  garrisonRiskLevel?: RiskLevel;
+  cityFatigueDelta?: number;
+  battleAftermath?: string;
+  recoveryHint?: string;
   attackerLoss: number;
   defenderLoss: number;
   attackerRemaining: number;
@@ -229,10 +597,23 @@ export interface BattleReport {
   wingContributions?: string[];
   commandScore?: number;
   playerControlSummary?: string;
+  battleTitle?: string;
+  battleSummary?: string;
+  historicalNarrative?: string;
+  tacticStory?: string[];
+  comboMessages?: string[];
+  counterMessages?: string[];
+  decisiveEvents?: string[];
+  battlefieldResult?: BattlefieldResult;
+  unitResults?: BattlefieldUnitResult[];
+  skillRecords?: BattlefieldSkillRecord[];
+  commandRecords?: BattlefieldCommandRecord[];
 }
 
 export interface GameState {
   version: string;
+  scenarioId?: string;
+  scenarioName?: string;
   playerFactionId: string;
   year: number;
   month: number;
@@ -246,12 +627,61 @@ export interface GameState {
   battleControlMode: BattleControlMode;
   commandPreferences: CommandPreferences;
   lastBattle?: BattleReport;
+  commandHistory?: string[];
+  eventHistory?: WorldEvent[];
+  regionObjectives?: RegionObjective[];
+  factionRoute?: FactionRoute;
+  imperialPrestige?: number;
+  rulerReputation?: number;
+  factionLegitimacy?: number;
+  courtStance?: CourtStance;
+  emperorControlFactionId?: string;
+  factionUniqueMechanics?: Record<string, FactionUniqueMechanic>;
+  seasonState?: SeasonState;
+  weatherState?: WeatherState;
+  caravanMarketState?: CaravanMarketState;
+  spyNetworks?: Record<string, SpyNetwork>;
+  talentRumors?: TalentRumor[];
+  domesticCrises?: DomesticCrisis[];
+  advisorTips?: string[];
+  autoGovernanceSettings?: { mode: AutoGovernanceMode };
+  difficultyRuleSet?: DifficultyRuleSet;
+  encyclopediaSeenState?: { opened: boolean; seenEntries: string[] };
+  tutorialState?: TutorialState;
+  longSimStats?: { turnsSimulated: number; battles: number; events: number };
+  duelRecords?: WarArchiveEntry[];
+  prisonerRecords?: WarArchiveEntry[];
+  woundedStates?: Record<string, number>;
+  personalityTraits?: Record<string, string[]>;
+  troopUpgrades?: Record<TroopType, number>;
+  citySpecialties?: CitySpecialty[];
+  supplyState?: { pressure: number; advice: string };
+  stratagemRecords?: WarArchiveEntry[];
+  factionStorylines?: Record<string, { step: number; title: string; completed: boolean }>;
+  endingProgress?: { title: string; progress: number; hint: string };
+  enhancedWarArchive?: WarArchiveEntry[];
+  liubeiProtection?: {
+    protectedUntilTurn: number;
+    lastAttackedTurn?: number;
+    supportTriggeredTurns?: number[];
+  };
 }
 
 export interface CommandPreferences {
   battleControlMode: BattleControlMode;
   battleSpeed: BattleSpeed;
   aiBattleLogLevel: AiBattleLogLevel;
+  tacticHints?: boolean;
+  uiDensity?: "standard" | "compact";
+  autoSave?: boolean;
+  animationsEnabled?: boolean;
+  soundEnabled?: boolean;
+  immersiveHints?: boolean;
+  aiLevel?: DifficultyAiLevel;
+  eventFrequency?: EventFrequency;
+  battleComplexity?: BattleComplexity;
+  liubeiProtectionMode?: "off" | "standard" | "extended";
+  autoGovernanceMode?: AutoGovernanceMode;
 }
 
 export const troopLabels: Record<TroopType, string> = {

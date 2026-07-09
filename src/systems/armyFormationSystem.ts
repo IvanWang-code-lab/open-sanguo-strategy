@@ -1,5 +1,6 @@
+import { createExpeditionPlan } from "./expeditionSystem";
 import { totalTroops } from "./unitSystem";
-import type { ArmyFormation, City, FormationRoleOverrides, FormationScores, FormationStyle, FormationTroopPreference, GameState, General, TroopAssignment, Troops } from "../types";
+import type { ArmyFormation, City, ExpeditionPlanOptions, FormationRoleOverrides, FormationScores, FormationStyle, FormationTroopPreference, GameState, General, TroopAssignment, Troops } from "../types";
 
 const zeroTroops: Troops = { infantry: 0, cavalry: 0, archer: 0, navy: 0 };
 
@@ -95,7 +96,7 @@ const scaleByStyle = (troops: Troops, style: FormationStyle, preference: Formati
   };
 };
 
-const splitTroops = (troops: Troops, slots: Array<Pick<TroopAssignment, "generalId" | "role" | "capacity">>) => {
+const splitTroops = (troops: Troops, slots: Array<Pick<TroopAssignment, "generalId" | "role" | "capacity"> & { weight?: number }>) => {
   if (slots.length === 0) return [];
   const weights: Record<TroopAssignment["role"], number> = {
     commander: 1.25,
@@ -105,9 +106,9 @@ const splitTroops = (troops: Troops, slots: Array<Pick<TroopAssignment, "general
     right: 0.85,
     reserve: 0.6,
   };
-  const totalWeight = slots.reduce((sum, slot) => sum + weights[slot.role], 0);
+  const totalWeight = slots.reduce((sum, slot) => sum + (slot.weight ?? weights[slot.role]), 0);
   const assignments = slots.map((slot) => {
-    const share = weights[slot.role] / totalWeight;
+    const share = (slot.weight ?? weights[slot.role]) / totalWeight;
     const assigned: Troops = {
       infantry: Math.floor(troops.infantry * share),
       cavalry: Math.floor(troops.cavalry * share),
@@ -142,6 +143,8 @@ const splitTroops = (troops: Troops, slots: Array<Pick<TroopAssignment, "general
   }
   return assignments;
 };
+
+type FormationSlot = Pick<TroopAssignment, "generalId" | "role" | "capacity"> & { weight?: number };
 
 export const sumAssignedTroops = (formation?: ArmyFormation): Troops => {
   if (!formation) return zeroTroops;
@@ -193,10 +196,15 @@ export const createAutoFormation = (
   style: FormationStyle = "auto",
   troopPreference: FormationTroopPreference = "balanced",
   overrides: FormationRoleOverrides = {},
+  expeditionOptions: ExpeditionPlanOptions = {},
 ): ArmyFormation => {
   const city = state.cities.find((item) => item.id === attackerCityId);
   const defender = state.cities.find((item) => item.id === defenderCityId);
-  const generals = city ? getCityGenerals(state, city) : [];
+  const cityGenerals = city ? getCityGenerals(state, city) : [];
+  const selectedIds = overrides.includedGeneralIds;
+  const generals = selectedIds && selectedIds.length > 0
+    ? cityGenerals.filter((general) => selectedIds.includes(general.id))
+    : cityGenerals;
   const used = new Set<string>();
   const commander = pickRole(generals, overrides.commanderId, "commander", used);
   const advisor = pickRole(generals, overrides.advisorId, "advisor", used);
@@ -205,16 +213,22 @@ export const createAutoFormation = (
   const right = pickRole(generals, overrides.rightGeneralId, "wing", used);
   const reserve = pickRole(generals, overrides.reserveGeneralId, "reserve", used);
 
-  const slots = [
-    commander && { generalId: commander.id, role: "commander" as const, capacity: commandCapacity(commander) },
-    advisor && { generalId: advisor.id, role: "advisor" as const, capacity: commandCapacity(advisor) },
-    vanguard && { generalId: vanguard.id, role: "vanguard" as const, capacity: commandCapacity(vanguard) },
-    left && { generalId: left.id, role: "left" as const, capacity: commandCapacity(left) },
-    right && { generalId: right.id, role: "right" as const, capacity: commandCapacity(right) },
-    reserve && { generalId: reserve.id, role: "reserve" as const, capacity: commandCapacity(reserve) },
-  ].filter((slot): slot is Pick<TroopAssignment, "generalId" | "role" | "capacity"> => Boolean(slot));
+  const slotCandidates: Array<FormationSlot | undefined | false> = [
+    commander && { generalId: commander.id, role: "commander" as const, capacity: commandCapacity(commander), weight: overrides.troopWeightOverrides?.commander },
+    advisor && { generalId: advisor.id, role: "advisor" as const, capacity: commandCapacity(advisor), weight: overrides.troopWeightOverrides?.advisor },
+    vanguard && { generalId: vanguard.id, role: "vanguard" as const, capacity: commandCapacity(vanguard), weight: overrides.troopWeightOverrides?.vanguard },
+    left && { generalId: left.id, role: "left" as const, capacity: commandCapacity(left), weight: overrides.troopWeightOverrides?.left },
+    right && { generalId: right.id, role: "right" as const, capacity: commandCapacity(right), weight: overrides.troopWeightOverrides?.right },
+    reserve && { generalId: reserve.id, role: "reserve" as const, capacity: commandCapacity(reserve), weight: overrides.troopWeightOverrides?.reserve },
+  ];
+  const slots = slotCandidates.filter((slot): slot is FormationSlot => Boolean(slot));
 
-  const sentTroops = city ? scaleByStyle(city.troops, style, troopPreference, defender) : zeroTroops;
+  const expeditionPlan = createExpeditionPlan(state, attackerCityId, defenderCityId, troopPreference, expeditionOptions);
+  const sentTroops = totalTroops(expeditionPlan.sortieTroops) > 0
+    ? expeditionPlan.sortieTroops
+    : city
+      ? scaleByStyle(city.troops, style, troopPreference, defender)
+      : zeroTroops;
   const assignments = splitTroops(sentTroops, slots);
   const total = totalTroops(sentTroops);
   const totalCapacity = slots.reduce((sum, slot) => sum + slot.capacity, 0);
@@ -222,7 +236,7 @@ export const createAutoFormation = (
 
   const direction: ArmyFormation["attackDirection"] =
     style === "cavalry" ? "right" : style === "archer" ? "left" : style === "steady" ? "balanced" : "center";
-  const summary = `${formationStyleLabels[style]} / ${troopPreferenceLabels[troopPreference]}：${commander?.name ?? "无主将"}统军，${advisor?.name ?? "无军师"}参赞，出兵${total.toLocaleString()}。`;
+  const summary = `${formationStyleLabels[style]} / ${troopPreferenceLabels[troopPreference]}：${commander?.name ?? "无主将"}统军，${advisor?.name ?? "无军师"}参赞，出兵${total.toLocaleString()}，留守${expeditionPlan.garrisonTotal.toLocaleString()}。`;
 
   const basicFormation = {
     commanderId: commander?.id,
@@ -237,6 +251,19 @@ export const createAutoFormation = (
     tacticStyle: `${formationStyleLabels[style]} · ${troopPreferenceLabels[troopPreference]}`,
     attackDirection: direction,
     totalTroops: total,
+    sortieTroops: sentTroops,
+    garrisonTroops: expeditionPlan.garrisonTroops,
+    sortiePreset: expeditionPlan.sortiePreset,
+    garrisonPreset: expeditionPlan.garrisonPreset,
+    sortieRatio: expeditionPlan.sortieRatio,
+    garrisonRatio: expeditionPlan.garrisonRatio,
+    minimumGarrison: expeditionPlan.minimumGarrison,
+    recommendedGarrison: expeditionPlan.recommendedGarrison,
+    supplyCost: expeditionPlan.supplyCost,
+    marchRisk: expeditionPlan.marchRisk,
+    garrisonRisk: expeditionPlan.garrisonRisk,
+    garrisonRiskLevel: expeditionPlan.garrisonRiskLevel,
+    expeditionAdvice: expeditionPlan.advice,
     capacityPressure,
     summary,
   } satisfies Omit<ArmyFormation, "scores">;
@@ -265,6 +292,8 @@ export const getFormationWarnings = (formation: ArmyFormation) => {
   if (!formation.commanderId) warnings.push("缺少主将，无法发挥军团统御。");
   if (!formation.advisorId) warnings.push("缺少军师，计策类战术成功率下降。");
   if (formation.capacityPressure > 0) warnings.push("部分武将带兵超过统率上限，战斗效率下降。");
+  if (formation.garrisonRiskLevel === "high") warnings.push("留守兵力过低，若出征失败会提高后方风险。");
+  if (formation.garrisonRiskLevel === "medium") warnings.push("留守兵力略低于建议，战后需要及时补防。");
   if (formation.totalTroops < 200) warnings.push("出兵不足 200，无法开战。");
   return warnings;
 };

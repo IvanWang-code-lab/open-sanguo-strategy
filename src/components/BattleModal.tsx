@@ -1,12 +1,14 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { BattleReportPanel } from "./BattleReportPanel";
-import { BattleTacticsPanel } from "./BattleTacticsPanel";
+import { BattlefieldView } from "./battlefield/BattlefieldView";
+import { BattleRoundTimeline } from "./battlefield/BattleRoundTimeline";
+import { UnitCommandBar } from "./battlefield/UnitCommandBar";
 import { getBattleBackground } from "../data/artAssets";
-import { getCharacterCanonProfile } from "../data/characterCanonProfiles";
-import { getGeneralVisualProfile } from "../data/generalVisualProfiles";
-import { battlePhaseLabels, createTacticalChoice, getBattlePhaseSequence, getTacticalOptions, phaseDescriptions, recommendTacticalOption } from "../systems/battleTacticsSystem";
-import { totalTroops } from "../systems/unitSystem";
-import type { BattlePhase, BattleReport, BattleTacticalChoice, Faction, GameState, PendingBattle } from "../types";
+import { commandLabels, createBattlefieldState, getBattlefieldTotal, getNearestEnemy } from "../systems/battlefieldSystem";
+import { chooseAutoPlayerCommands } from "../systems/battleAiController";
+import { executeBattleRound, issueBattleCommand } from "../systems/unitCommandSystem";
+import { terrainLabels, weatherLabels } from "../types";
+import type { BattleCommandType, BattleReport, BattleTacticalChoice, BattlefieldMode, BattlefieldState, BattleUnit, Faction, GameState, PendingBattle } from "../types";
 
 interface BattleModalProps {
   report?: BattleReport;
@@ -14,136 +16,201 @@ interface BattleModalProps {
   state?: GameState;
   factions: Faction[];
   onResolveBattle?: (choices: BattleTacticalChoice[]) => void;
+  onResolveBattlefield?: (battlefield: BattlefieldState) => void;
   onClose: () => void;
 }
 
-export function BattleModal({ report, pendingBattle, state, factions, onResolveBattle, onClose }: BattleModalProps) {
-  const [finished, setFinished] = useState(false);
-  const [phaseIndex, setPhaseIndex] = useState(0);
-  const [collectedChoices, setCollectedChoices] = useState<BattleTacticalChoice[]>([]);
+const toBattlefieldMode = (mode: PendingBattle["controlMode"]): BattlefieldMode => {
+  if (mode === "autoWatch") return "autoWatch";
+  if (mode === "quick" || mode === "auto") return "quick";
+  return "classic";
+};
 
-  const resolvePendingPhase = (chosenBy: BattleTacticalChoice["chosenBy"] = "auto", phaseOverride?: BattlePhase) => {
-    if (!pendingBattle || !state || !onResolveBattle) return;
-    const phases = getBattlePhaseSequence(pendingBattle.controlMode);
-    const phase = phaseOverride ?? phases[phaseIndex];
-    const options = getTacticalOptions(state, pendingBattle.attackerCityId, pendingBattle.defenderCityId, pendingBattle.formation, phase);
-    const recommended = recommendTacticalOption(options);
-    const choice = recommended ? createTacticalChoice(state, pendingBattle.formation, recommended, chosenBy) : undefined;
-    const nextChoices = choice ? [...collectedChoices, choice] : collectedChoices;
-    if (phaseIndex >= phases.length - 1) {
-      onResolveBattle(nextChoices);
-    } else {
-      setCollectedChoices(nextChoices);
-      setPhaseIndex((current) => current + 1);
-    }
-  };
+const unitStatusText = (unit: BattleUnit) => {
+  if (unit.isRouted) return "溃退";
+  if (unit.troops <= unit.maxTroops * 0.35) return "苦战";
+  if (unit.morale <= 35) return "动摇";
+  return "可战";
+};
+
+export function BattleModal({ report, pendingBattle, state, factions, onResolveBattlefield, onClose }: BattleModalProps) {
+  const [finished, setFinished] = useState(false);
+  const [battlefield, setBattlefield] = useState<BattlefieldState | undefined>();
+  const [targetUnitId, setTargetUnitId] = useState<string | undefined>();
 
   useEffect(() => {
     setFinished(false);
     if (!report) return;
-    const timer = window.setTimeout(() => setFinished(true), state?.commandPreferences.battleSpeed === "fast" ? 3200 : 5200);
+    const timer = window.setTimeout(() => setFinished(true), state?.commandPreferences.battleSpeed === "fast" ? 1800 : 3200);
     return () => window.clearTimeout(timer);
   }, [report, state?.commandPreferences.battleSpeed]);
 
   useEffect(() => {
-    setPhaseIndex(0);
-    setCollectedChoices([]);
-  }, [pendingBattle?.attackerCityId, pendingBattle?.defenderCityId]);
+    if (!pendingBattle || !state) {
+      setBattlefield(undefined);
+      setTargetUnitId(undefined);
+      return;
+    }
+    if (pendingBattle.controlMode === "quick") return;
+    const next = createBattlefieldState(state, pendingBattle, toBattlefieldMode(pendingBattle.controlMode));
+    setBattlefield(next);
+    setTargetUnitId(next.enemyUnits[0]?.id);
+  }, [pendingBattle?.attackerCityId, pendingBattle?.defenderCityId, pendingBattle?.controlMode, state]);
+
+  const currentTarget = useMemo(() => {
+    if (!battlefield) return undefined;
+    return battlefield.enemyUnits.find((unit) => unit.id === targetUnitId && !unit.isRouted) ?? battlefield.enemyUnits.find((unit) => !unit.isRouted);
+  }, [battlefield, targetUnitId]);
+
+  const selectedUnit = useMemo(() => {
+    if (!battlefield) return undefined;
+    return battlefield.playerUnits.find((unit) => unit.id === battlefield.selectedUnitId) ?? battlefield.playerUnits.find((unit) => !unit.isRouted);
+  }, [battlefield]);
+
+  const resolveIfFinished = (next: BattlefieldState) => {
+    if (next.result && onResolveBattlefield) {
+      onResolveBattlefield(next);
+      return true;
+    }
+    return false;
+  };
+
+  const issueCommand = (commandType: BattleCommandType, skillId?: string) => {
+    if (!battlefield || !selectedUnit) return;
+    const target = currentTarget ?? getNearestEnemy(selectedUnit, battlefield.enemyUnits, commandType !== "focus");
+    const command = {
+      unitId: selectedUnit.id,
+      commandType,
+      targetUnitId: target?.id,
+      skillId,
+      issuedBy: "player" as const,
+    };
+    const next = issueBattleCommand(battlefield, command);
+    setBattlefield({
+      ...next,
+      battleLog: [...next.battleLog, `已令${selectedUnit.generalName}部执行【${skillId ? "释放技能" : commandLabels[commandType]}】。`].slice(-60),
+    });
+  };
+
+  const executeRound = () => {
+    if (!state || !battlefield) return;
+    const next = executeBattleRound(state, battlefield);
+    if (!resolveIfFinished(next)) setBattlefield(next);
+  };
+
+  const issueAutoRound = () => {
+    if (!state || !battlefield) return;
+    let next = battlefield;
+    for (const command of Object.values(chooseAutoPlayerCommands(state, battlefield))) next = issueBattleCommand(next, command);
+    setBattlefield({
+      ...next,
+      battleLog: [...next.battleLog, `第${next.round}回合：军师自动为各部下达推荐命令。`].slice(-60),
+    });
+  };
 
   useEffect(() => {
-    if (!pendingBattle || report) return undefined;
-    const timer = window.setTimeout(() => resolvePendingPhase("auto"), state?.commandPreferences.battleSpeed === "fast" ? 6500 : 9500);
+    if (!state || !battlefield || battlefield.mode !== "autoWatch" || battlefield.result) return undefined;
+    const timer = window.setTimeout(() => {
+      const next = executeBattleRound(state, battlefield);
+      if (!resolveIfFinished(next)) setBattlefield(next);
+    }, state.commandPreferences.battleSpeed === "fast" ? 900 : 1500);
     return () => window.clearTimeout(timer);
-  }, [phaseIndex, pendingBattle, report, state]);
+  }, [battlefield, state]);
 
   useEffect(() => {
     if (!report && !pendingBattle) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (pendingBattle && !report) resolvePendingPhase("auto");
-      else if (finished) onClose();
-      else setFinished(true);
+      if (battlefield && !battlefield.result) {
+        issueAutoRound();
+        return;
+      }
+      if (report && !finished) setFinished(true);
+      else onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [finished, onClose, pendingBattle, report]);
+  }, [battlefield, finished, onClose, report]);
 
-  if (!report && pendingBattle && state) {
+  if (!report && pendingBattle && state && battlefield) {
     const attackerCity = state.cities.find((city) => city.id === pendingBattle.attackerCityId);
     const defenderCity = state.cities.find((city) => city.id === pendingBattle.defenderCityId);
     if (!attackerCity || !defenderCity) return null;
-    const phases = getBattlePhaseSequence(pendingBattle.controlMode);
-    const currentPhase = phases[phaseIndex] ?? "clash";
-    const options = getTacticalOptions(state, pendingBattle.attackerCityId, pendingBattle.defenderCityId, pendingBattle.formation, currentPhase);
-    const recommended = recommendTacticalOption(options);
-    const attackerColor = factions.find((item) => item.id === attackerCity.factionId)?.color ?? "#ddd";
-    const defenderColor = factions.find((item) => item.id === defenderCity.factionId)?.color ?? "#ddd";
+    const attackerColor = factions.find((item) => item.id === attackerCity.factionId)?.color ?? "#d6b46a";
+    const defenderColor = factions.find((item) => item.id === defenderCity.factionId)?.color ?? "#d6b46a";
     const battleBackground = getBattleBackground({
-      isSiege: defenderCity.defense >= 55,
+      isSiege: battlefield.battleType === "siege",
       isDefendingCity: defenderCity.terrain === "city",
       terrain: defenderCity.terrain,
     });
-    const resolve = (choice?: BattleTacticalChoice) => {
-      if (!onResolveBattle) return;
-      const nextChoices = choice ? [...collectedChoices, choice] : collectedChoices;
-      if (phaseIndex >= phases.length - 1) {
-        onResolveBattle(nextChoices);
-      } else {
-        setCollectedChoices(nextChoices);
-        setPhaseIndex((current) => current + 1);
-      }
-    };
+    const playerTotal = getBattlefieldTotal(battlefield.playerUnits);
+    const enemyTotal = getBattlefieldTotal(battlefield.enemyUnits);
+    const pendingCount = Object.keys(battlefield.pendingCommands).length;
+
     return (
       <div className="modal-backdrop">
-        <section className="battle-modal pending" style={{ "--battle-bg": `url(${battleBackground})` } as CSSProperties}>
-          <div className="battle-head">
-            <div style={{ color: attackerColor }}>
-              <strong>{attackerCity.name}</strong>
-              <span>进攻军团 · {pendingBattle.formation.summary}</span>
-              <em>出兵 {pendingBattle.formation.totalTroops.toLocaleString()}</em>
+        <section className="battle-modal classic-control-modal" style={{ "--battle-bg": `url(${battleBackground})` } as CSSProperties}>
+          <header className="classic-battle-header">
+            <div>
+              <p className="eyebrow">经典可控战场 · 第 {battlefield.round} 回合</p>
+              <h2>{attackerCity.name} 攻 {defenderCity.name}</h2>
+              <span>{battlefield.battleType === "siege" ? "攻城战" : "野战"} · {terrainLabels[battlefield.terrain]} · {weatherLabels[battlefield.weather]} · {battlefield.mode === "autoWatch" ? "自动观战" : "手动指挥"}</span>
             </div>
-            <div className="battle-vs">令</div>
-            <div style={{ color: defenderColor }}>
-              <strong>{defenderCity.name}</strong>
-              <span>守军兵力 {totalTroops(defenderCity.troops).toLocaleString()}</span>
-              <em>城防 {defenderCity.defense}</em>
+            <div className="battle-header-actions">
+              <button onClick={issueAutoRound}>全军推荐</button>
+              <button onClick={executeRound}>执行回合</button>
+              <button onClick={onClose}>返回地图</button>
             </div>
+          </header>
+
+          <div className="classic-battle-summary">
+            <span style={{ borderColor: attackerColor }}>我军 <b>{playerTotal.toLocaleString()}</b></span>
+            <span>已下令 <b>{pendingCount}/{battlefield.playerUnits.length}</b></span>
+            <span style={{ borderColor: defenderColor }}>敌军 <b>{enemyTotal.toLocaleString()}</b></span>
+            <span>城防 <b>{battlefield.cityDefense}</b></span>
           </div>
-          <div className="battle-command-console">
-            <span>阶段 {phaseIndex + 1}/{phases.length} · {battlePhaseLabels[currentPhase]}</span>
-            <span>模式：{pendingBattle.controlMode === "deep" ? "深度" : "标准"}</span>
-            <span>已下达战术：{collectedChoices.length}</span>
-            <strong>{phaseDescriptions[currentPhase]}</strong>
+
+          <div className="classic-battle-layout">
+            <aside className="classic-army-roster player">
+              <h3>我军部队</h3>
+              {battlefield.playerUnits.map((unit) => (
+                <button key={unit.id} className={battlefield.selectedUnitId === unit.id ? "selected" : ""} onClick={() => setBattlefield({ ...battlefield, selectedUnitId: unit.id })}>
+                  <strong>{unit.generalName}</strong>
+                  <span>{unitStatusText(unit)} · {unit.troops}/{unit.maxTroops}</span>
+                </button>
+              ))}
+            </aside>
+
+            <BattlefieldView
+              battlefield={battlefield}
+              selectedUnitId={battlefield.selectedUnitId}
+              targetUnitId={currentTarget?.id}
+              attackerColor={attackerColor}
+              defenderColor={defenderColor}
+              onSelectPlayerUnit={(unitId) => setBattlefield({ ...battlefield, selectedUnitId: unitId })}
+              onSelectEnemyUnit={setTargetUnitId}
+            />
+
+            <BattleRoundTimeline logs={battlefield.battleLog} />
           </div>
-          <div className="battlefield tactical">
-            <div className="army army-left">{Array.from({ length: 28 }, (_, index) => <span key={index} style={{ background: attackerColor }} />)}</div>
-            <div className="clash-zone">
-              <b style={{ opacity: 1, animation: "none" }}>{battlePhaseLabels[currentPhase]}阶段</b>
-            </div>
-            <div className="army army-right">{Array.from({ length: 28 }, (_, index) => <span key={index} style={{ background: defenderColor }} />)}</div>
-          </div>
-          <BattleTacticsPanel
-            phase={currentPhase}
-            options={options}
-            onChoose={(option) => resolve(createTacticalChoice(state, pendingBattle.formation, option, "player"))}
-            onAuto={() => resolve(recommended ? createTacticalChoice(state, pendingBattle.formation, recommended, "auto") : undefined)}
+
+          <UnitCommandBar
+            state={state}
+            battlefield={battlefield}
+            selectedUnit={selectedUnit}
+            targetUnit={currentTarget}
+            onIssueCommand={issueCommand}
+            onExecuteRound={executeRound}
+            onAutoRound={issueAutoRound}
           />
-          <div className="battle-actions">
-            <button onClick={onClose}>返回地图</button>
-            <button className="primary" onClick={() => resolvePendingPhase("auto")}>跳过本阶段</button>
-          </div>
         </section>
       </div>
     );
   }
 
   if (!report) return null;
-  const attackerColor = factions.find((item) => item.id === report.attackerFactionId)?.color ?? "#ddd";
-  const defenderColor = factions.find((item) => item.id === report.defenderFactionId)?.color ?? "#ddd";
-  const attackerProfile = getCharacterCanonProfile(report.attackerGeneralId);
-  const defenderProfile = getCharacterCanonProfile(report.defenderGeneralId);
-  const attackerVisual = getGeneralVisualProfile(report.attackerGeneralId);
-  const defenderVisual = getGeneralVisualProfile(report.defenderGeneralId);
+  const attackerColor = factions.find((item) => item.id === report.attackerFactionId)?.color ?? "#d6b46a";
+  const defenderColor = factions.find((item) => item.id === report.defenderFactionId)?.color ?? "#d6b46a";
   const battleBackground = getBattleBackground({
     isSiege: report.defenderDefense >= 55,
     isDefendingCity: report.defenderTerrain === "city",
@@ -151,55 +218,31 @@ export function BattleModal({ report, pendingBattle, state, factions, onResolveB
   });
   const attackerPercent = Math.max(3, (report.attackerRemaining / Math.max(1, report.attackerStart)) * 100);
   const defenderPercent = Math.max(3, (report.defenderRemaining / Math.max(1, report.defenderStart)) * 100);
-  const soldierBlocks = Array.from({ length: 28 }, (_, index) => index);
 
   return (
     <div className="modal-backdrop">
-      <section
-        className={`battle-modal ${finished ? "finished" : "running"}`}
-        style={{ "--battle-bg": `url(${battleBackground})` } as CSSProperties}
-      >
-        <div className="battle-head">
-          <div style={{ color: attackerColor }}>
-            <strong>{report.attackerGeneral}</strong>
-            <span>进攻 {report.attackerCityName}</span>
-            <em>{attackerVisual?.flavorTitle ?? attackerProfile?.gameArchetype ?? "主将"}</em>
-          </div>
-          <div className="battle-vs">战</div>
-          <div style={{ color: defenderColor }}>
-            <strong>{report.defenderGeneral}</strong>
-            <span>防守 {report.defenderCityName}</span>
-            <em>{defenderVisual?.flavorTitle ?? defenderProfile?.gameArchetype ?? "守将"}</em>
-          </div>
-        </div>
+      <section className={`battle-modal ${finished ? "finished" : "running"} battlefield-command-stage`} style={{ "--battle-bg": `url(${battleBackground})` } as CSSProperties}>
+        <header className="battlefield-top">
+          <div style={{ color: attackerColor }}><strong>{report.attackerGeneral}</strong><span>进攻 {report.attackerCityName}</span><em>{report.attackerLoss.toLocaleString()} 损失</em></div>
+          <div className="battle-vs">战报</div>
+          <div style={{ color: defenderColor }}><strong>{report.defenderGeneral}</strong><span>防守 {report.defenderCityName}</span><em>{report.defenderLoss.toLocaleString()} 损失</em></div>
+        </header>
         <div className="battle-bars">
-          <div><span>兵力 {report.attackerStart - report.attackerLoss}/{report.attackerStart}</span><i style={{ width: `${attackerPercent}%`, background: attackerColor }} /></div>
-          <div><span>兵力 {report.defenderStart - report.defenderLoss}/{report.defenderStart}</span><i style={{ width: `${defenderPercent}%`, background: defenderColor }} /></div>
+          <div><span>我军兵力 {report.attackerRemaining}/{report.attackerStart}</span><i style={{ width: `${attackerPercent}%`, background: attackerColor }} /></div>
+          <div><span>敌军兵力 {report.defenderRemaining}/{report.defenderStart}</span><i style={{ width: `${defenderPercent}%`, background: defenderColor }} /></div>
         </div>
-        <div className="battlefield">
-          <div className="army army-left">
-            {soldierBlocks.map((item) => <span key={item} style={{ background: attackerColor }} />)}
+        {!finished && (
+          <div className="battlefield running-stage">
+            <div className="army army-left">{Array.from({ length: 28 }, (_, index) => <span key={index} style={{ background: attackerColor }} />)}</div>
+            <div className="skill-banner">{report.decisiveEvents?.[0] ?? (report.skillMessages[0] || report.resultText)}</div>
+            <div className="army army-right">{Array.from({ length: 28 }, (_, index) => <span key={index} style={{ background: defenderColor }} />)}</div>
           </div>
-          <div className="clash-zone">
-            {!finished && report.skillMessages.slice(0, 3).map((message, index) => <b key={message} style={{ animationDelay: `${index * 1.1}s` }}>{message}</b>)}
-            {report.skillMessages.some((message) => message.includes("火")) && <div className="fire-wave" />}
-          </div>
-          <div className="army army-right">
-            {soldierBlocks.map((item) => <span key={item} style={{ background: defenderColor }} />)}
-          </div>
-        </div>
-        {!finished ? (
-          <div className="battle-actions">
-            <button className="skip" onClick={() => setFinished(true)}>跳过战斗</button>
-          </div>
-        ) : (
-          <>
-            <BattleReportPanel report={report} />
-            <div className="battle-actions">
-              <button className="primary" onClick={onClose}>关闭战报</button>
-            </div>
-          </>
         )}
+        {finished && <BattleReportPanel report={report} />}
+        <div className="battle-actions">
+          {!finished && <button onClick={() => setFinished(true)}>跳过战斗</button>}
+          {finished && <button className="primary" onClick={onClose}>返回地图</button>}
+        </div>
       </section>
     </div>
   );
