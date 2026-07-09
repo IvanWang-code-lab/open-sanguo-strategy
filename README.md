@@ -11,6 +11,30 @@ The project focuses on turn-based map strategy, city management, officers, battl
 * Provide a clean TypeScript/Vite codebase for learning and extension
 * Make scenario data, officers, cities, and AI behavior easier to modify
 * Use Codex-assisted development for refactoring, testing, documentation, and maintainability
+  
+## Current Prototype Status
+
+This repository has been updated with the latest SG prototype source.
+
+The current focus is to move Open Sanguo Strategy from early open-source preparation toward a playable browser-based strategy prototype.
+
+Recent updates include:
+
+* Latest SG prototype source structure synced into the public repository
+* Updated TypeScript, Vite, and browser project configuration
+* Public assets and script structure added
+* Prototype core helpers for turn progression, scenario validation, bootstrap flow, controller actions, and command handling
+* v0.1.0 and v0.1.1 releases published
+* Changelog, architecture notes, development guide, and maintenance workflow documented
+
+The near-term development focus is:
+
+* Playable browser prototype
+* Strategy map display
+* City and faction systems
+* Turn progression and command flow
+* Scenario data and validation
+* UI integration for prototype state and view models
 
 ## Core Features Planned
 
