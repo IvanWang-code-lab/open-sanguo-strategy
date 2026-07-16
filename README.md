@@ -1,6 +1,9 @@
 # Open Sanguo Strategy
 
 [![CI Build](https://github.com/IvanWang-code-lab/open-sanguo-strategy/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/IvanWang-code-lab/open-sanguo-strategy/actions/workflows/ci.yml)
+[![Play Live Demo](https://img.shields.io/badge/Play-Live%20Demo-2ea44f?logo=github)](https://ivanwang-code-lab.github.io/open-sanguo-strategy/)
+
+**Online Demo:** [Launch Open Sanguo Strategy](https://ivanwang-code-lab.github.io/open-sanguo-strategy/)
 
 Open Sanguo Strategy is an open-source browser-based strategy game framework inspired by Three Kingdoms history and classic turn-based strategy games.
 
