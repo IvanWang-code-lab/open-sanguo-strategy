@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
-import { Eye, Flag, Hammer, HeartHandshake, RefreshCw, Search, Shield, Sprout, Store, Sword, UserPlus } from "lucide-react";
+import { ArrowRightLeft, Eye, Flag, Hammer, HeartHandshake, RefreshCw, Search, Shield, Sprout, Store, Sword, UserPlus } from "lucide-react";
 import { AdvisorLine } from "./immersive/AdvisorLine";
 import { CommandSeal } from "./immersive/CommandSeal";
 import { ScrollPanel } from "./immersive/ScrollPanel";
@@ -11,12 +11,14 @@ import { getBestGeneral } from "../systems/generalSystem";
 import { summarizeObjectives } from "../systems/strategyObjectiveSystem";
 import { totalTroops } from "../systems/unitSystem";
 import type { City, CityActionType, CommandPreferences, GameState } from "../types";
+import { getActiveGeneralsAtCity } from "../selectors/generalSelectors";
 
 interface CommandPanelProps {
   state: GameState;
   city?: City;
   onAction: (action: CityActionType) => void;
   onAttack: (targetCityId: string) => void;
+  onTransfer: (sourceCityId: string, targetCityId?: string) => void;
   onPreferencesChange?: (preferences: CommandPreferences) => void;
 }
 
@@ -58,7 +60,7 @@ const strategyActions: Array<{ action: CityActionType; icon: ReactNode; gain: st
   { action: "autoGovern", icon: <RefreshCw size={17} />, gain: "自动推荐", risk: "仍耗指令" },
 ];
 
-export function CommandPanel({ state, city, onAction, onAttack, onPreferencesChange }: CommandPanelProps) {
+export function CommandPanel({ state, city, onAction, onAttack, onTransfer, onPreferencesChange }: CommandPanelProps) {
   const [office, setOffice] = useState<OfficeKey>("civil");
   const objectives = summarizeObjectives(state);
 
@@ -73,7 +75,7 @@ export function CommandPanel({ state, city, onAction, onAttack, onPreferencesCha
 
   const own = city.factionId === state.playerFactionId;
   const faction = state.factions.find((item) => item.id === city.factionId);
-  const activeGenerals = state.generals.filter((general) => city.generals.includes(general.id) && general.status === "active");
+  const activeGenerals = getActiveGeneralsAtCity(state, city.id);
   const bestBattle = getBestGeneral(state, city.id, "battle");
   const bestPolitics = getBestGeneral(state, city.id, "politics");
   const targets = getAttackTargets(state, city.id);
@@ -136,6 +138,21 @@ export function CommandPanel({ state, city, onAction, onAttack, onPreferencesCha
       return (
         <>
           <div className="seal-grid">{militaryActions.map(renderSeal)}</div>
+          {own && (
+            <div className="expedition-edict">
+              <h4>调遣令</h4>
+              <CommandSeal
+                disabled={(state.commandState.commands ?? 0) < 1}
+                title={(state.commandState.commands ?? 0) < 1 ? "指令不足" : activeGenerals.length === 0 ? "本城无将，可从相邻己方城市请求调入" : "向相邻己方城市调遣武将与兵力"}
+                onClick={() => onTransfer(city.id)}
+              >
+                <ArrowRightLeft size={17} />
+                <strong>{activeGenerals.length === 0 ? "请求调入" : "城市调遣"}</strong>
+                <span>指令 -1</span>
+                <small>{activeGenerals.length === 0 ? "从相邻己方城市选将" : "不受已盖令状态阻断"}</small>
+              </CommandSeal>
+            </div>
+          )}
           <div className="expedition-edict">
             <h4>出征令</h4>
             {!own && <p>非己方城池不可出征。</p>}

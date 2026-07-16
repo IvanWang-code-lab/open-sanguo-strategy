@@ -38,6 +38,18 @@ export function BattleReportPanel({ report }: BattleReportPanelProps) {
 
       <p className="historical-narrative">{report.historicalNarrative ?? report.battleAftermath}</p>
 
+      {report.settlementSummary && (
+        <section className="war-report-settlement">
+          <h4>战后军势去向</h4>
+          <p>{report.settlementSummary}</p>
+          <span>驻守：{report.garrisonGeneralNames?.join("、") || "无"}</span>
+          <span>回师：{report.returnGeneralNames?.join("、") || "无"}</span>
+          <span>来源城兵力：{(report.sourceCityTroopsAfter ?? 0).toLocaleString()}</span>
+          <span>目标城兵力：{(report.targetCityTroopsAfter ?? 0).toLocaleString()}</span>
+          <small>后续可在军务署使用“城市调遣”，每次消耗 1 指令。</small>
+        </section>
+      )}
+
       <section className="war-report-columns">
         <div>
           <h4>武将表现</h4>

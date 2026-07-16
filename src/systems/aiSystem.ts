@@ -3,6 +3,7 @@ import { createAutoFormation } from "./armyFormationSystem";
 import { calculateCommandState } from "./commandSystem";
 import { createBattlefieldState } from "./battlefieldSystem";
 import { applyBattlefieldResult } from "./battleResolutionSystem";
+import { autoApplyPostBattleSettlement } from "./postBattleSettlementSystem";
 import { executeBattleRound } from "./unitCommandSystem";
 import { isLiuBeiProtectedTarget } from "./liubeiBalanceSystem";
 import { totalTroops } from "./unitSystem";
@@ -121,7 +122,7 @@ export const runAiTurn = (state: GameState) => {
           battlefield = executeBattleRound(next, battlefield);
         }
         const result = applyBattlefieldResult(next, battle, battlefield);
-        next = result.state;
+        next = result.state.pendingPostBattleSettlement ? autoApplyPostBattleSettlement(result.state).state : result.state;
         commands -= 1;
         logs.push(`${faction.name}判断${weakTarget.name}守备可图，从${city.name}发兵并保留后方守备：${result.report?.resultText ?? "战斗结束"}`);
         actions += 1;

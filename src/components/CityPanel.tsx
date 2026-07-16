@@ -5,16 +5,18 @@ import { skillName } from "../data/skills";
 import { totalTroops } from "../systems/unitSystem";
 import { terrainLabels, troopLabels } from "../types";
 import type { City, GameState } from "../types";
+import { getGeneralsAtCity } from "../selectors/generalSelectors";
 
 interface CityPanelProps {
   state: GameState;
   city?: City;
+  onRequestTransfer?: (cityId: string) => void;
 }
 
-export function CityPanel({ state, city }: CityPanelProps) {
+export function CityPanel({ state, city, onRequestTransfer }: CityPanelProps) {
   if (!city) return <aside className="city-seal-panel empty">沙盘未选城</aside>;
   const faction = state.factions.find((item) => item.id === city.factionId);
-  const generals = state.generals.filter((general) => city.generals.includes(general.id));
+  const generals = getGeneralsAtCity(state, city.id);
   const fatigue = city.cityFatigue ?? 0;
   return (
     <aside className="city-seal-panel" style={{ "--faction-color": faction?.color ?? "#d6b46a" } as CSSProperties}>
@@ -42,7 +44,7 @@ export function CityPanel({ state, city }: CityPanelProps) {
         ))}
       </div>
       <div className="resident-generals">
-        {generals.length === 0 ? <span>暂无武将驻守</span> : generals.slice(0, 5).map((general) => {
+        {generals.length === 0 ? <span>本城暂无武将，可从相邻己方城市请求调入</span> : generals.slice(0, 5).map((general) => {
           const canon = getCharacterCanonProfile(general.id);
           const visual = getGeneralVisualProfile(general.id);
           return (
@@ -52,6 +54,9 @@ export function CityPanel({ state, city }: CityPanelProps) {
           );
         })}
       </div>
+      {city.factionId === state.playerFactionId && generals.length === 0 && onRequestTransfer && (
+        <button className="city-request-transfer" onClick={() => onRequestTransfer(city.id)} data-testid="request-transfer">请求相邻己方城市调入武将</button>
+      )}
     </aside>
   );
 }

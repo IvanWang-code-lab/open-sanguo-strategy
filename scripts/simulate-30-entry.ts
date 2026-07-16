@@ -3,6 +3,7 @@ import { actionLabels, getCommandCost, spendPlayerCommand } from "../src/systems
 import { createAutoFormation } from "../src/systems/armyFormationSystem";
 import { createAutoTacticalChoices } from "../src/systems/battleTacticsSystem";
 import { resolveBattle } from "../src/systems/battleSystem";
+import { autoApplyPostBattleSettlement } from "../src/systems/postBattleSettlementSystem";
 import { createInitialGame } from "../src/systems/scenarioSystem";
 import { endTurn } from "../src/systems/turnSystem";
 import { totalTroops } from "../src/systems/unitSystem";
@@ -60,7 +61,7 @@ for (let turn = 1; turn <= 30; turn += 1) {
     if (spent.ok && formation.totalTroops >= 200) {
       const tactics = createAutoTacticalChoices(spent.state, attackCity.id, defender.id, formation, "auto", "standard");
       const battle = resolveBattle(spent.state, attackCity.id, defender.id, { formation, tacticalChoices: tactics, controlMode: "auto" });
-      state = battle.state;
+      state = battle.state.pendingPostBattleSettlement ? autoApplyPostBattleSettlement(battle.state).state : battle.state;
       battleCount += 1;
     }
   } else {

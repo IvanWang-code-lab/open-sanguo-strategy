@@ -6,6 +6,7 @@ import { ensureStrategyObjectives } from "./strategyObjectiveSystem";
 import { generateWorldEvents } from "./worldEventSystem";
 import { applyLiuBeiEarlySupport, ensureLiuBeiProtection } from "./liubeiBalanceSystem";
 import { advanceLivingWorld, ensureLivingWorldState } from "./livingWorldSystem";
+import { getGeneralsAtCity } from "../selectors/generalSelectors";
 import type { GameState, WeatherType } from "../types";
 
 const weatherPool: WeatherType[] = ["sunny", "rain", "fog", "snow"];
@@ -13,7 +14,7 @@ const weatherText: Record<WeatherType, string> = { sunny: "晴", rain: "雨", fo
 
 // 结算城市资源产出，内政技能会提高对应收益。
 const produceResources = (state: GameState) => {
-  const generalsByCity = new Map(state.cities.map((city) => [city.id, state.generals.filter((general) => city.generals.includes(general.id))]));
+  const generalsByCity = new Map(state.cities.map((city) => [city.id, getGeneralsAtCity(state, city.id)]));
   const cities = state.cities.map((city) => {
     const generals = generalsByCity.get(city.id) ?? [];
     const farmBoost = generals.some((general) => general.skills.some((skill) => ["farm", "pacify", "benevolence"].includes(skill))) ? 1.2 : 1;

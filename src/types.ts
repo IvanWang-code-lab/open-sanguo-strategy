@@ -35,6 +35,7 @@ export type BattlefieldMode = "classic" | "autoWatch" | "quick";
 export type MapMode = "normal" | "faction" | "frontline" | "publicOrder" | "military";
 export type EventType = "trend" | "regional" | "talent" | "publicOrder" | "warPressure" | "commerce" | "disaster" | "anecdote" | "scenario";
 export type ObjectiveCategory = "region" | "factionRoute" | "ending";
+export type PostBattleSettlementMode = "splitGarrison" | "returnMain" | "allStation" | "auto";
 
 export interface Troops {
   infantry: number;
@@ -71,6 +72,7 @@ export interface City {
   morale: number;
   publicOrder: number;
   actedThisTurn: boolean;
+  /** 旧存档兼容镜像；运行时武将位置以 General.locationCityId 为唯一权威源。 */
   generals: string[];
   cityFatigue?: number;
   woundedTroops?: number;
@@ -84,6 +86,7 @@ export interface General {
   id: string;
   name: string;
   factionId: string;
+  /** 武将位置唯一权威源；非 active 状态允许为空字符串。 */
   locationCityId: string;
   force: number;
   intelligence: number;
@@ -608,6 +611,78 @@ export interface BattleReport {
   unitResults?: BattlefieldUnitResult[];
   skillRecords?: BattlefieldSkillRecord[];
   commandRecords?: BattlefieldCommandRecord[];
+  settlementSummary?: string;
+  garrisonGeneralNames?: string[];
+  returnGeneralNames?: string[];
+  sourceCityTroopsAfter?: number;
+  targetCityTroopsAfter?: number;
+}
+
+export interface BattleOutcomeSurvivor {
+  generalId: string;
+  role: BattleUnitRole;
+  troops: Troops;
+  morale: number;
+}
+
+export interface BattleOutcome {
+  battleId: string;
+  sourceCityId: string;
+  targetCityId: string;
+  attackerFactionId: string;
+  defenderFactionId: string;
+  winnerFactionId: string;
+  victoryType: BattlefieldResult["outcome"];
+  conquered: boolean;
+  participantGeneralIds: string[];
+  survivingUnits: BattleOutcomeSurvivor[];
+  sortieTroops: Troops;
+  attackerRemainingTroops: Troops;
+  defenderRemainingTroops: Troops;
+  troopLosses: { attacker: number; defender: number };
+  woundedGeneralIds: string[];
+  capturedGeneralIds: string[];
+  fatigueChanges: { sourceCity: number; targetCity: number };
+  moraleChanges: { sourceCity: number; targetCity: number };
+  cityDefenseAfter: number;
+  experienceAwards: Record<string, number>;
+  battleHistoryEntry: WarArchiveEntry;
+  recommendedSettlement: PostBattleSettlementMode;
+  report: BattleReport;
+  logs: string[];
+}
+
+export interface PendingPostBattleSettlement {
+  battleOutcomeId: string;
+  sourceCityId: string;
+  targetCityId: string;
+  attackerFactionId: string;
+  participantGeneralIds: string[];
+  survivingTroopsByGeneral: Record<string, Troops>;
+  unassignedSurvivingTroops: Troops;
+  sourceCityRemainingTroops: Troops;
+  targetCityRemainingDefense: number;
+  availableSettlementModes: PostBattleSettlementMode[];
+  recommendedMode: PostBattleSettlementMode;
+  selectedGarrisonGeneralIds: string[];
+  selectedReturnGeneralIds: string[];
+  createdAtTurn: number;
+}
+
+export interface PostBattleSettlementDecision {
+  mode: PostBattleSettlementMode;
+  garrisonGeneralIds: string[];
+  returnGeneralIds: string[];
+}
+
+export interface TransferOrder {
+  id: string;
+  sourceCityId: string;
+  targetCityId: string;
+  generalIds: string[];
+  troopsByGeneral: Record<string, Troops>;
+  createdAtTurn: number;
+  summary: string;
 }
 
 export interface GameState {
@@ -626,6 +701,10 @@ export interface GameState {
   currentTurnCommandsUsed: string[];
   battleControlMode: BattleControlMode;
   commandPreferences: CommandPreferences;
+  activeBattle?: BattlefieldState;
+  pendingPostBattleSettlement?: PendingPostBattleSettlement;
+  transfers?: TransferOrder[];
+  history?: string[];
   lastBattle?: BattleReport;
   commandHistory?: string[];
   eventHistory?: WorldEvent[];

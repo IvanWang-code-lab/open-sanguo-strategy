@@ -10,17 +10,21 @@ import { MapView } from "./components/MapView";
 import { SettingsModal } from "./components/SettingsModal";
 import { TopBar } from "./components/TopBar";
 import { WarCouncilModal } from "./components/WarCouncilModal";
+import { PostBattleSettlementModal } from "./components/PostBattleSettlementModal";
+import { ArmyTransferModal } from "./components/ArmyTransferModal";
 import { GAME_VERSION } from "./constants/version";
 import { resolveBattle } from "./systems/battleSystem";
 import { performCityAction } from "./systems/citySystem";
 import { actionLabels, getCommandCost, spendPlayerCommand } from "./systems/commandSystem";
 import { addLogs } from "./systems/eventSystem";
-import { clearSave, loadGame, saveGame } from "./systems/saveSystem";
+import { clearSave, loadGame, normalizeGameState, saveGame } from "./systems/saveSystem";
 import { createInitialGame } from "./systems/scenarioSystem";
 import { endTurn, getFactionStats } from "./systems/turnSystem";
 import { createAutoTacticalChoices } from "./systems/battleTacticsSystem";
 import { applyBattlefieldResult } from "./systems/battleResolutionSystem";
-import type { ArmyFormation, BattleControlMode, BattleReport, BattleTacticalChoice, BattlefieldState, CityActionType, CommandPreferences, GameState, PendingBattle } from "./types";
+import { applyPostBattleSettlement } from "./systems/postBattleSettlementSystem";
+import { transferGenerals, type TransferRequest } from "./systems/transferSystem";
+import type { ArmyFormation, BattleControlMode, BattleReport, BattleTacticalChoice, BattlefieldState, CityActionType, CommandPreferences, GameState, PendingBattle, PostBattleSettlementDecision } from "./types";
 
 const LORD_CHOICE_KEY = "three-kingdoms-new-overlord-last-lord";
 
@@ -35,12 +39,13 @@ function App() {
   const [battleReport, setBattleReport] = useState<BattleReport | undefined>();
   const [warCouncil, setWarCouncil] = useState<{ attackerCityId: string; defenderCityId: string } | undefined>();
   const [pendingBattle, setPendingBattle] = useState<PendingBattle | undefined>();
+  const [transferCity, setTransferCity] = useState<{ cityId: string; targetCityId?: string } | undefined>();
   const [showSettings, setShowSettings] = useState(false);
 
   const selectedCity = game?.cities.find((city) => city.id === selectedCityId);
 
   const persist = (next: GameState) => {
-    const versionedState = { ...next, version: GAME_VERSION };
+    const versionedState = normalizeGameState({ ...next, version: GAME_VERSION });
     setGame(versionedState);
     saveGame(versionedState);
   };
@@ -68,6 +73,7 @@ function App() {
     setBattleReport(undefined);
     setWarCouncil(undefined);
     setPendingBattle(undefined);
+    setTransferCity(undefined);
   };
 
   const handleCityAction = (action: CityActionType) => {
@@ -112,7 +118,7 @@ function App() {
     const next = addLogs(result.state, [...spent.logs, ...result.logs]);
     persist(next);
     if (result.report) {
-      setBattleReport(result.report);
+      setBattleReport(next.pendingPostBattleSettlement ? undefined : result.report);
       if (result.report.occupied) setSelectedCityId(battle.defenderCityId);
     }
     setPendingBattle(undefined);
@@ -156,10 +162,34 @@ function App() {
     const next = addLogs(result.state, [...spent.logs, ...result.logs]);
     persist(next);
     if (result.report) {
-      setBattleReport(result.report);
+      setBattleReport(next.pendingPostBattleSettlement ? undefined : result.report);
       if (result.report.occupied) setSelectedCityId(pendingBattle.defenderCityId);
     }
     setPendingBattle(undefined);
+  };
+
+  const handlePostBattleSettlement = (decision: PostBattleSettlementDecision) => {
+    if (!game) return;
+    const result = applyPostBattleSettlement(game, decision);
+    if (!result.ok) {
+      persist(addLogs(game, result.logs));
+      return;
+    }
+    persist(result.state);
+    setSelectedCityId(game.pendingPostBattleSettlement?.targetCityId ?? selectedCityId);
+    setBattleReport(result.state.lastBattle);
+  };
+
+  const handleTransfer = (request: TransferRequest) => {
+    if (!game) return;
+    const result = transferGenerals(game, request);
+    if (!result.ok) {
+      persist(addLogs(game, result.logs));
+      return;
+    }
+    persist(addLogs(result.state, result.logs));
+    setSelectedCityId(request.targetCityId);
+    setTransferCity(undefined);
   };
 
   const handleEndTurn = () => {
@@ -223,8 +253,8 @@ function App() {
       map={<MapView state={game} selectedCityId={selectedCityId} onSelectCity={setSelectedCityId} onAttackCity={handleAttack} />}
       side={(
         <>
-          <CityPanel state={game} city={selectedCity} />
-          <CommandPanel state={game} city={selectedCity} onAction={handleCityAction} onAttack={handleAttack} onPreferencesChange={handlePreferencesChange} />
+          <CityPanel state={game} city={selectedCity} onRequestTransfer={(cityId) => setTransferCity({ cityId })} />
+          <CommandPanel state={game} city={selectedCity} onAction={handleCityAction} onAttack={handleAttack} onTransfer={(cityId, targetCityId) => setTransferCity({ cityId, targetCityId })} onPreferencesChange={handlePreferencesChange} />
         </>
       )}
       bottom={<GameBottomLog logs={game.logs} advice={game.commandState.commandAdvice ?? game.commandState.recommendations} events={game.eventHistory} commandHistory={game.currentTurnCommandsUsed} />}
@@ -250,6 +280,22 @@ function App() {
           setPendingBattle(undefined);
         }}
       />
+      {game.pendingPostBattleSettlement && !battleReport && (
+        <PostBattleSettlementModal
+          state={game}
+          pending={game.pendingPostBattleSettlement}
+          onConfirm={handlePostBattleSettlement}
+        />
+      )}
+      {transferCity && !game.pendingPostBattleSettlement && (
+        <ArmyTransferModal
+          state={game}
+          cityId={transferCity.cityId}
+          preferredTargetCityId={transferCity.targetCityId}
+          onCancel={() => setTransferCity(undefined)}
+          onConfirm={handleTransfer}
+        />
+      )}
       {showSettings && (
         <SettingsModal
           preferences={game.commandPreferences}

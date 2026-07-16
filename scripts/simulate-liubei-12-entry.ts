@@ -3,6 +3,7 @@ import { actionLabels, getCommandCost, spendPlayerCommand } from "../src/systems
 import { createAutoFormation } from "../src/systems/armyFormationSystem";
 import { createBattlefieldState } from "../src/systems/battlefieldSystem";
 import { applyBattlefieldResult } from "../src/systems/battleResolutionSystem";
+import { autoApplyPostBattleSettlement } from "../src/systems/postBattleSettlementSystem";
 import { executeBattleRound } from "../src/systems/unitCommandSystem";
 import { createInitialGame } from "../src/systems/scenarioSystem";
 import { endTurn } from "../src/systems/turnSystem";
@@ -53,7 +54,8 @@ for (let turn = 1; turn <= 12; turn += 1) {
     if (spent.ok && formation.totalTroops >= 400) {
       let battlefield = createBattlefieldState(spent.state, { attackerCityId: attacker.id, defenderCityId: defender.id, formation, controlMode: "autoWatch" }, "autoWatch");
       while (!battlefield.result && battlefield.round <= battlefield.maxRounds + 1) battlefield = executeBattleRound(spent.state, battlefield);
-      state = applyBattlefieldResult(spent.state, { attackerCityId: attacker.id, defenderCityId: defender.id, formation, controlMode: "autoWatch" }, battlefield).state;
+      const battleResult = applyBattlefieldResult(spent.state, { attackerCityId: attacker.id, defenderCityId: defender.id, formation, controlMode: "autoWatch" }, battlefield);
+      state = battleResult.state.pendingPostBattleSettlement ? autoApplyPostBattleSettlement(battleResult.state).state : battleResult.state;
     }
   }
 

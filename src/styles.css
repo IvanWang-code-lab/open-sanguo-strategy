@@ -1001,6 +1001,137 @@
   }
 }
 
+/* V19.2 战后占城处置与城市调遣：保持现有铜金风格，仅补必要布局。 */
+.post-battle-settlement-modal,
+.army-transfer-modal {
+  width: min(980px, 94vw);
+  max-height: 90vh;
+  overflow: auto;
+  color: #eee3c8;
+  background: linear-gradient(180deg, rgba(24, 19, 13, 0.98), rgba(10, 9, 7, 0.98));
+  border: 1px solid var(--tk-border, rgba(214, 180, 106, 0.45));
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.75), inset 0 0 40px rgba(123, 85, 48, 0.12);
+}
+
+.post-battle-settlement-modal > header,
+.army-transfer-modal > header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 18px 22px;
+  background: rgba(13, 11, 8, 0.97);
+  border-bottom: 1px solid var(--tk-border, rgba(214, 180, 106, 0.45));
+}
+
+.post-battle-settlement-modal h2,
+.army-transfer-modal h2 { margin: 4px 0; color: var(--tk-gold, #d6b46a); }
+
+.settlement-route-summary,
+.transfer-route {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 14px 20px;
+  background: rgba(143, 47, 36, 0.12);
+  border-bottom: 1px solid rgba(214, 180, 106, 0.22);
+}
+
+.settlement-route-summary span,
+.transfer-route span { display: inline-flex; align-items: center; gap: 8px; }
+
+.settlement-mode-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 16px 20px;
+}
+
+.settlement-mode-row button {
+  min-height: 88px;
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-content: center;
+  text-align: left;
+  gap: 4px 8px;
+  border: 1px solid rgba(214, 180, 106, 0.25);
+  background: rgba(35, 28, 19, 0.82);
+}
+
+.settlement-mode-row button small { grid-column: 1 / -1; color: #b9ab8b; }
+.settlement-mode-row button.selected { border-color: #d6b46a; box-shadow: inset 0 0 18px rgba(214, 180, 106, 0.14); }
+
+.settlement-general-list,
+.transfer-generals,
+.transfer-troops { padding: 0 20px 16px; }
+
+.settlement-general-list article {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(360px, 1.5fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid rgba(214, 180, 106, 0.16);
+}
+
+.settlement-general-list article > div:first-child { display: grid; gap: 3px; }
+.destination-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.destination-toggle button { display: inline-flex; justify-content: center; align-items: center; gap: 6px; }
+.destination-toggle button.selected { color: #17120b; background: #d6b46a; border-color: #e8d29d; }
+
+.settlement-footer,
+.army-transfer-modal > footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 14px 20px;
+  background: rgba(13, 11, 8, 0.98);
+  border-top: 1px solid var(--tk-border, rgba(214, 180, 106, 0.45));
+}
+
+.settlement-footer span,
+.army-transfer-modal > footer span { margin-right: auto; }
+
+.transfer-city-picker {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 20px;
+}
+
+.transfer-city-picker button.selected,
+.transfer-generals label.selected { border-color: #d6b46a; color: #f1d98d; background: rgba(143, 47, 36, 0.28); }
+
+.transfer-generals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.transfer-generals h3,
+.transfer-troops h3 { grid-column: 1 / -1; }
+.transfer-generals label { display: flex; align-items: center; gap: 8px; padding: 10px; border: 1px solid rgba(214, 180, 106, 0.2); }
+.transfer-generals label span { margin-left: auto; color: #b9ab8b; }
+.transfer-troops { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.transfer-troops label { display: grid; grid-template-columns: 1fr; gap: 5px; }
+.transfer-troops input { width: 100%; box-sizing: border-box; }
+.transfer-troops p { grid-column: 1 / -1; }
+.city-request-transfer { width: 100%; margin-top: 10px; border-color: rgba(214, 180, 106, 0.45); }
+.war-report-settlement { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 14px; border: 1px solid rgba(214, 180, 106, 0.35); background: rgba(93, 65, 35, 0.16); }
+.war-report-settlement h4,
+.war-report-settlement p,
+.war-report-settlement small { width: 100%; margin: 0; }
+
+@media (max-width: 760px) {
+  .settlement-mode-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settlement-general-list article { grid-template-columns: 1fr; }
+  .transfer-generals,
+  .transfer-troops { grid-template-columns: 1fr 1fr; }
+}
+
 * {
   box-sizing: border-box;
 }

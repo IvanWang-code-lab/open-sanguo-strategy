@@ -3,13 +3,17 @@ import { actionLabels, getCommandCost, spendPlayerCommand } from "../src/systems
 import { createAutoFormation } from "../src/systems/armyFormationSystem";
 import { createAutoTacticalChoices } from "../src/systems/battleTacticsSystem";
 import { resolveBattle } from "../src/systems/battleSystem";
-import { createBattlefieldState } from "../src/systems/battlefieldSystem";
+import { createBattlefieldState, sumUnitTroops } from "../src/systems/battlefieldSystem";
 import { applyBattlefieldResult } from "../src/systems/battleResolutionSystem";
 import { issueBattleCommand, executeBattleRound } from "../src/systems/unitCommandSystem";
 import { getUnitActiveSkills } from "../src/systems/activeSkillSystem";
 import { createInitialGame } from "../src/systems/scenarioSystem";
 import { endTurn } from "../src/systems/turnSystem";
 import { totalTroops } from "../src/systems/unitSystem";
+import { applyPostBattleSettlement } from "../src/systems/postBattleSettlementSystem";
+import { transferGenerals } from "../src/systems/transferSystem";
+import { getActiveGeneralsAtCity } from "../src/selectors/generalSelectors";
+import { loadGame, saveGame } from "../src/systems/saveSystem";
 import type { GameState } from "../src/types";
 
 const assert = (condition: unknown, message: string) => {
@@ -27,6 +31,15 @@ const assertHealthy = (state: GameState) => {
     assert(totalTroops(city.troops) >= 0, `${city.name} 兵力非法`);
     assert((city.cityFatigue ?? 0) >= 0, `${city.name} 疲劳非法`);
   }
+  const cityIds = new Set(state.cities.map((city) => city.id));
+  const seen = new Set<string>();
+  for (const general of state.generals.filter((item) => item.status === "active")) {
+    assert(cityIds.has(general.locationCityId), `${general.name} 缺少合法 locationCityId`);
+    assert(!seen.has(general.id), `${general.name} 在派生武将列表中重复`);
+    seen.add(general.id);
+  }
+  const derivedIds = state.cities.flatMap((city) => getActiveGeneralsAtCity(state, city.id).map((general) => general.id));
+  assert(new Set(derivedIds).size === derivedIds.length, "城市派生武将列表存在重复");
 };
 
 let state = createInitialGame("cao-cao");
@@ -118,7 +131,102 @@ liuField = executeBattleRound(liuBattleState, liuField);
 assert(liuField.battleLog.some((line) => line.includes("发动【")), "刘关张主动技能没有写入战场日志");
 assertHealthy(liuBattleState);
 
+// 强制构造可重复的占城结果，验证战斗与战后武将去向严格分离。
+const chenliu = liuBattleState.cities.find((city) => city.id === "chenliu");
+assert(chenliu, "找不到陈留");
+const closureFormation = createAutoFormation(
+  liuBattleState,
+  liuCity!.id,
+  chenliu!.id,
+  "auto",
+  "balanced",
+  { includedGeneralIds: ["liu-bei", "guan-yu", "zhang-fei"] },
+  { sortiePreset: "main", garrisonPreset: "30" },
+);
+let closureField = createBattlefieldState(liuBattleState, { attackerCityId: liuCity!.id, defenderCityId: chenliu!.id, formation: closureFormation, controlMode: "classic" }, "classic");
+const attackerRemainingTroops = sumUnitTroops(closureField.playerUnits);
+const defenderStart = closureField.enemyUnits.reduce((sum, unit) => sum + unit.maxTroops, 0);
+closureField = {
+  ...closureField,
+  enemyUnits: closureField.enemyUnits.map((unit) => ({ ...unit, troops: 0, isRouted: true })),
+  result: {
+    winner: "attacker",
+    outcome: "victory",
+    occupied: true,
+    unitResults: [...closureField.playerUnits, ...closureField.enemyUnits].map((unit) => ({
+      unitId: unit.id,
+      generalName: unit.generalName,
+      role: unit.role,
+      startTroops: unit.maxTroops,
+      remainingTroops: unit.side === "enemy" ? 0 : unit.troops,
+      losses: unit.side === "enemy" ? unit.maxTroops : unit.losses,
+      kills: unit.kills,
+      skillUses: unit.skillUses,
+      routed: unit.side === "enemy" || unit.isRouted,
+    })),
+    skillRecords: [],
+    commandRecords: [],
+    cityChanges: [],
+    experienceGains: [],
+    summary: "P0 闭环强制胜利",
+    nextAdvice: "执行占城处置",
+    attackerRemaining: totalTroops(attackerRemainingTroops),
+    defenderRemaining: 0,
+    attackerLoss: Math.max(0, closureFormation.totalTroops - totalTroops(attackerRemainingTroops)),
+    defenderLoss: defenderStart,
+    cityDefenseDamage: chenliu!.defense,
+  },
+};
+const closureApplied = applyBattlefieldResult(
+  liuBattleState,
+  { attackerCityId: liuCity!.id, defenderCityId: chenliu!.id, formation: closureFormation, controlMode: "classic" },
+  closureField,
+);
+assert(closureApplied.outcome?.conquered, "强制胜利未生成 BattleOutcome");
+assert(closureApplied.state.pendingPostBattleSettlement, "占城后未生成 pendingPostBattleSettlement");
+for (const id of ["liu-bei", "guan-yu", "zhang-fei"]) {
+  assert(closureApplied.state.generals.find((general) => general.id === id)?.locationCityId === liuCity!.id, "settlement 前参战武将被提前搬入目标城");
+}
+const settled = applyPostBattleSettlement(closureApplied.state, {
+  mode: "splitGarrison",
+  garrisonGeneralIds: ["guan-yu"],
+  returnGeneralIds: ["liu-bei", "zhang-fei"],
+});
+assert(settled.ok, `分兵驻守失败：${settled.reason ?? "未知"}`);
+assert(!settled.state.pendingPostBattleSettlement, "settlement 完成后 pending 未清空");
+assert(getActiveGeneralsAtCity(settled.state, chenliu!.id).map((general) => general.id).join(",") === "guan-yu", "陈留驻守武将不正确");
+assert(new Set(getActiveGeneralsAtCity(settled.state, liuCity!.id).map((general) => general.id)).size === 2, "平原回师武将数量不正确");
+const beforeTransferCommands = settled.state.commandState.commands ?? 0;
+const transferred = transferGenerals(settled.state, {
+  sourceCityId: chenliu!.id,
+  targetCityId: liuCity!.id,
+  generalIds: ["guan-yu"],
+  troopsByGeneral: { "guan-yu": { infantry: 0, cavalry: 0, archer: 0, navy: 0 } },
+});
+assert(transferred.ok, `城市调遣失败：${transferred.reason ?? "未知"}`);
+assert((transferred.state.commandState.commands ?? 0) === beforeTransferCommands - 1, "调遣没有扣除 1 指令");
+assert(transferred.state.generals.find((general) => general.id === "guan-yu")?.locationCityId === liuCity!.id, "调遣后关羽位置错误");
+
+const memoryStorage = new Map<string, string>();
+Object.defineProperty(globalThis, "localStorage", {
+  configurable: true,
+  value: {
+    getItem: (key: string) => memoryStorage.get(key) ?? null,
+    setItem: (key: string, value: string) => memoryStorage.set(key, value),
+    removeItem: (key: string) => memoryStorage.delete(key),
+    clear: () => memoryStorage.clear(),
+    key: (index: number) => [...memoryStorage.keys()][index] ?? null,
+    get length() { return memoryStorage.size; },
+  },
+});
+saveGame(transferred.state);
+const reloaded = loadGame();
+assert(reloaded, "保存重载返回空状态");
+assert(reloaded!.generals.find((general) => general.id === "guan-yu")?.locationCityId === liuCity!.id, "保存重载后关羽位置不一致");
+assert(reloaded!.cities.find((city) => city.id === liuCity!.id)?.generals.includes("guan-yu"), "旧 city.generals 兼容镜像未由权威位置派生");
+assertHealthy(reloaded!);
+
 state = endTurn(state);
 assertHealthy(state);
 
-console.log("smoke 通过：统一指令、军议编成、可控战场、主动技能、活世界默认状态、战斗结算、回合推进均完成。");
+console.log("smoke 通过：统一指令、可控战场、BattleOutcome、占城处置、分兵回师、城市调遣、保存重载一致性均完成。");

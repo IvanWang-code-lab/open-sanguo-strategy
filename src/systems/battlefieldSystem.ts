@@ -1,6 +1,7 @@
 import { getActiveSkill, getGeneralActiveSkillIds } from "./activeSkillSystem";
 import { getFormationCandidates } from "./armyFormationSystem";
 import { totalTroops, troopTypes } from "./unitSystem";
+import { getActiveGeneralsAtCity } from "../selectors/generalSelectors";
 import type { ArmyFormation, BattleLane, BattleUnit, BattleUnitRole, BattlefieldMode, BattlefieldState, City, GameState, General, PendingBattle, Troops } from "../types";
 
 const roleLane: Record<BattleUnitRole, BattleLane> = {
@@ -158,8 +159,7 @@ export const createBattlefieldState = (state: GameState, pendingBattle: PendingB
       { infantry: assignment.infantry, cavalry: assignment.cavalry, archer: assignment.archer, navy: assignment.navy },
       index,
     ));
-  const defenderGenerals = state.generals
-    .filter((general) => defenderCity.generals.includes(general.id) && general.status === "active")
+  const defenderGenerals = getActiveGeneralsAtCity(state, defenderCity.id)
     .sort((a, b) => b.command + b.force - (a.command + a.force));
   const enemyUnits = distributeEnemyTroops(defenderCity, defenderGenerals)
     .slice(0, 6)

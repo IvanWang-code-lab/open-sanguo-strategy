@@ -3,6 +3,7 @@ import { actionLabels, getCommandCost, spendPlayerCommand } from "../src/systems
 import { createAutoFormation } from "../src/systems/armyFormationSystem";
 import { createAutoTacticalChoices } from "../src/systems/battleTacticsSystem";
 import { resolveBattle } from "../src/systems/battleSystem";
+import { autoApplyPostBattleSettlement } from "../src/systems/postBattleSettlementSystem";
 import { createInitialGame } from "../src/systems/scenarioSystem";
 import { endTurn } from "../src/systems/turnSystem";
 import { totalTroops } from "../src/systems/unitSystem";
@@ -39,7 +40,8 @@ for (let turn = 1; turn <= 10; turn += 1) {
     const spent = spendPlayerCommand(state, getCommandCost("attack"), actionLabels.attack, attackCity.name);
     if (spent.ok && formation.totalTroops >= 200) {
       const tactics = createAutoTacticalChoices(spent.state, attackCity.id, defender.id, formation, "auto", "standard");
-      state = resolveBattle(spent.state, attackCity.id, defender.id, { formation, tacticalChoices: tactics, controlMode: "auto" }).state;
+      const battleResult = resolveBattle(spent.state, attackCity.id, defender.id, { formation, tacticalChoices: tactics, controlMode: "auto" });
+      state = battleResult.state.pendingPostBattleSettlement ? autoApplyPostBattleSettlement(battleResult.state).state : battleResult.state;
     }
   } else {
     const recruitCity = state.cities.find((city) => city.factionId === state.playerFactionId && (state.commandState.commands ?? 0) > 0 && city.gold >= 120 && city.food >= 120);

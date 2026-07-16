@@ -259,7 +259,6 @@ export const performCityAction = (state: GameState, cityId: string, action: City
       generals: next.generals.map((item) =>
         item.id === found.id ? { ...item, factionId: state.playerFactionId, locationCityId: cityId, status: "active" as const, loyalty: 70 + Math.floor(Math.random() * 20) } : item,
       ),
-      cities: next.cities.map((item) => (item.id === cityId ? { ...item, generals: [...item.generals, found.id] } : item)),
     };
     logs.push(`${city.name}搜索成功，${found.name}加入我方。`);
     if (general) {

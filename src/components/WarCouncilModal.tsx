@@ -5,6 +5,7 @@ import { createAutoFormation, formationStyleLabels, getFormationCandidates, getF
 import { garrisonPresetLabels, garrisonPresetRatios, sortiePresetLabels, sortiePresetRatios } from "../systems/expeditionSystem";
 import { getTacticalOptions, recommendTacticalOption } from "../systems/battleTacticsSystem";
 import { totalTroops } from "../systems/unitSystem";
+import { getActiveGeneralsAtCity } from "../selectors/generalSelectors";
 import { terrainLabels, weatherLabels } from "../types";
 import type {
   ArmyFormation,
@@ -47,6 +48,7 @@ export function WarCouncilModal({ state, attackerCityId, defenderCityId, onCance
   const defender = state.cities.find((city) => city.id === defenderCityId);
   const candidates = useMemo(() => getFormationCandidates(state, attackerCityId), [attackerCityId, state]);
   const participantIds = selectedGeneralIds ?? candidates.slice(0, 6).map((general) => general.id);
+  const stayingGenerals = candidates.filter((general) => !participantIds.includes(general.id));
   const formationOverrides: FormationRoleOverrides = {
     ...roleOverrides,
     includedGeneralIds: participantIds,
@@ -121,6 +123,9 @@ export function WarCouncilModal({ state, attackerCityId, defenderCityId, onCance
 
           <section className="council-controls">
             <h3>出兵与留守</h3>
+            <p className="council-hint">来源城留守武将：{stayingGenerals.length ? stayingGenerals.map((general) => general.name).join("、") : "无（全员出征）"}</p>
+            {stayingGenerals.length === 0 && <p className="warning-text-inline">全员出征不会立即搬城；若胜利，战后必须安排至少一名守将，并可令主力回师。</p>}
+            <p className="council-hint">胜后默认方针：分兵驻守。战后可改为主力回师、全军驻守或自动分配。</p>
             <div className="edict-row">
               {sortiePresets.map((preset) => (
                 <button key={preset} className={sortiePreset === preset ? "selected" : ""} onClick={() => setSortiePreset(preset)}>
@@ -183,7 +188,7 @@ export function WarCouncilModal({ state, attackerCityId, defenderCityId, onCance
               <span>城防：{defender.defense}</span>
               <span>士气：{defender.morale}</span>
               <span>民心：{defender.publicOrder}</span>
-              <span>守将：{defender.generals.length} 人</span>
+              <span>守将：{getActiveGeneralsAtCity(state, defender.id).length} 人</span>
             </div>
             <p className="council-hint">推荐关键战术：{recommended?.label ?? "稳住阵脚"}。成功率会受武将、技能、地形、天气、连携和反制影响。</p>
             <p className="council-hint">编成评分：{formation.scores?.rating ?? "B"}；军势 {formation.scores?.militaryPower ?? 0} / 战机 {formation.scores?.opportunity ?? 0} / 破阵 {formation.scores?.breakthrough ?? 0} / 稳定 {formation.scores?.stability ?? 0}。</p>

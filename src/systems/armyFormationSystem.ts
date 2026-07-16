@@ -1,4 +1,5 @@
 import { createExpeditionPlan } from "./expeditionSystem";
+import { getActiveGeneralsAtCity } from "../selectors/generalSelectors";
 import { totalTroops } from "./unitSystem";
 import type { ArmyFormation, City, ExpeditionPlanOptions, FormationRoleOverrides, FormationScores, FormationStyle, FormationTroopPreference, GameState, General, TroopAssignment, Troops } from "../types";
 
@@ -32,8 +33,7 @@ export const roleLabels: Record<TroopAssignment["role"], string> = {
 
 export const commandCapacity = (general?: General) => (general ? 500 + general.command * 25 + general.level * 50 : 0);
 
-const getCityGenerals = (state: GameState, city: City) =>
-  state.generals.filter((general) => city.generals.includes(general.id) && general.status === "active");
+const getCityGenerals = (state: GameState, city: City) => getActiveGeneralsAtCity(state, city.id);
 
 export const getFormationCandidates = (state: GameState, cityId: string) => {
   const city = state.cities.find((item) => item.id === cityId);

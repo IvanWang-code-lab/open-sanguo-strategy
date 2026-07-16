@@ -1,6 +1,6 @@
 {
   "name": "three-kingdoms-new-overlord",
-  "version": "19.0.0-true-living-world-grand-strategy-final-boss-edition",
+  "version": "19.2.0-core-state-post-battle-settlement-and-transfer-rebuild",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,7 +13,8 @@
     "simulate:10": "node scripts/run-simulate-10.mjs",
     "simulate:30": "node scripts/run-simulate-30.mjs",
     "simulate:liubei:12": "node scripts/run-simulate-liubei-12.mjs",
-    "check:release": "npm run validate:data && npm run validate:assets && npm run smoke && npm run simulate:10 && npm run simulate:liubei:12 && npm run build",
+    "test:e2e:post-conquest": "node scripts/e2e-post-conquest.mjs",
+    "check:release": "npm run validate:data && npm run validate:assets && npm run smoke && npm run simulate:10 && npm run simulate:liubei:12 && npm run build && npm run test:e2e:post-conquest",
     "check:release:long": "npm run check:release && npm run simulate:30"
   },
   "dependencies": {

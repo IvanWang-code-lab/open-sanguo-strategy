@@ -1,4 +1,5 @@
 import { areAdjacent } from "../data/routes";
+import { getActiveGeneralsAtCity } from "../selectors/generalSelectors";
 import type { GameState, General } from "../types";
 
 // 根据经验处理武将升级，升级时随机提升 1 到 2 项属性。
@@ -38,7 +39,7 @@ export const applyExpToGeneral = (state: GameState, generalId: string, amount: n
 export const getBestGeneral = (state: GameState, cityId: string, mode: "battle" | "politics" | "search" = "battle") => {
   const city = state.cities.find((item) => item.id === cityId);
   if (!city) return undefined;
-  const generals = state.generals.filter((general) => city.generals.includes(general.id) && general.status === "active");
+  const generals = getActiveGeneralsAtCity(state, cityId);
   const score = (general: General) =>
     mode === "battle"
       ? general.force * 0.4 + general.command * 0.5 + general.intelligence * 0.1
