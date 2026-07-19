@@ -1,5 +1,48 @@
 # Changelog
 
+## v0.3.0 - SG V19.2.0 public prototype
+
+This release publishes the latest SG V19.2.0 source updates as a playable open-source browser strategy prototype.
+
+### Added
+
+- Added the latest SG V19.2.0 source structure
+- Added post-battle settlement flow
+- Added army and officer transfer systems
+- Added updated command, city, battle, AI, save, and turn systems
+- Added simulation and regression support scripts
+- Added GitHub Pages deployment workflow
+- Added a public live demo link to the README
+- Added GitHub Actions CI build verification
+- Added CodeQL security scanning
+- Enabled Dependabot vulnerability monitoring
+
+### Improved
+
+- Improved core game-state consistency
+- Improved battle result and city ownership updates
+- Improved officer position and army-state handling
+- Improved save and reload foundations
+- Improved public repository maintenance and deployment workflow
+- Improved TypeScript build reliability
+
+### Validation
+
+- Local production build passes
+- GitHub Actions CI passes
+- CodeQL analysis passes
+- Dependabot currently reports no open alerts
+- GitHub Pages deployment completes successfully
+- Public live demo is available
+
+### Live demo
+
+https://ivanwang-code-lab.github.io/open-sanguo-strategy/
+
+### Current status
+
+The project is actively maintained and remains under development. Additional gameplay validation, balancing, edge-case testing, and interface improvements will continue in later releases.
+
 ## v0.1.1 - Prototype core maintenance update
 
 This release continues the early open-source preparation of Open Sanguo Strategy by adding more prototype-oriented core logic.
